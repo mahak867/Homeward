@@ -24,10 +24,11 @@ def world():
     clock.set_paused(True)
     chaos = Chaos()
     eng = Engine(":memory:", clock, chaos)
-    app = create_app(eng, run_watchdog=False)
+    hubs = {}
+    app = create_app(eng, hubs, run_watchdog=False)
     client = TestClient(app)
-    hubs = {p.patient_id: EdgeHub(p, "http://testserver", clock, chaos, seed=i + 1, transport=client)
-            for i, p in enumerate(DEMO_PATIENTS)}
+    hubs.update({p.patient_id: EdgeHub(p, "http://testserver", clock, chaos, seed=i + 1, transport=client)
+                 for i, p in enumerate(DEMO_PATIENTS)})
     for h in hubs.values():
         h.backfill(32)
         h.flush(100)
@@ -114,12 +115,13 @@ def test_ingest_requires_device_key(world):
 def test_idempotent_ingest_under_duplicate_storm(world):
     clock, chaos, eng, client, hubs = world
     chaos.duplicate_storm = True
-    before = eng.db.execute("SELECT COUNT(*) FROM readings").fetchone()[0]
+    count = "SELECT (SELECT COUNT(*) FROM readings) + (SELECT COUNT(*) FROM edge_events)"
+    before = eng.db.execute(count).fetchone()[0]
     seq0 = sum(h.seq for h in hubs.values())
     run(world, 2)
-    after = eng.db.execute("SELECT COUNT(*) FROM readings").fetchone()[0]
+    after = eng.db.execute(count).fetchone()[0]
     produced = sum(h.seq for h in hubs.values()) - seq0
-    assert produced >= 72 and after - before == produced  # exactly one row per real reading
+    assert produced >= 72 and after - before == produced  # exactly one row per real reading/event
     assert eng.m["duplicates"] >= produced
 
 
@@ -243,3 +245,93 @@ def test_missed_round_raises_caregiver_alert(world):
     assert any(a["kind"] == "CAREGIVER" for a in eng.alerts(0))
     client.post("/api/patients/P-101/rounds", json={"caregiver": "Sunita", "acvpu": "A"})
     assert not any(a["kind"] == "CAREGIVER" and a["patient_id"] == "P-101" and a["status"] != "RESOLVED" for a in eng.alerts(0))
+
+
+# ----------------------------------------------------------------- real hardware path
+def test_real_sensor_feeds_pipeline_drives_buzzer_and_button_acks(world):
+    clock, chaos, eng, client, hubs = world
+    bad = {"hr": 128, "spo2": 88, "temp": 39.3, "finger": True, "sqi": 0.9, "firmware": "test"}
+    for _ in range(4):
+        r = client.post("/api/devices/P-101/sensor", json=bad, headers=KEY)
+        assert r.status_code == 200
+        run(world, 1 / 12)
+    last = eng.db.execute("SELECT hr, spo2, temp, source FROM readings WHERE patient_id='P-101' ORDER BY ts DESC LIMIT 1").fetchone()
+    assert (last["hr"], last["spo2"], last["temp"], last["source"]) == (128, 88, 39.3, "sensor")
+    assert eng.state["P-101"]["news2"]["total"] >= 7             # 3 (SpO2) + 2 (HR) + 2 (temp)
+    cmd = client.get("/api/devices/P-101/command").json()
+    assert cmd["alarm"] in ("fast", "slow") and cmd["led"] == "red"
+    r = client.post("/api/devices/P-101/sensor", json={**bad, "button": True}, headers=KEY).json()
+    assert r["acknowledged"]                                     # bedside button acknowledged the alert
+    assert all(a["status"] != "OPEN" for a in eng.alerts(0) if a["patient_id"] == "P-101" and a["id"] in r["acknowledged"])
+    assert client.post("/api/devices/P-101/sensor", json=bad).status_code == 401
+
+
+def test_finger_off_real_sensor_is_artifact_not_alarm(world):
+    clock, chaos, eng, client, hubs = world
+    client.post("/api/devices/P-102/sensor", json={"finger": False, "spo2": 70, "hr": 40}, headers=KEY)
+    run(world, 0.25)
+    assert eng.db.execute("SELECT artifact FROM readings WHERE patient_id='P-102' ORDER BY ts DESC LIMIT 1").fetchone()[0] == 1
+    assert not any(a["kind"] == "VITALS" and a["patient_id"] == "P-102" for a in eng.alerts(0))
+
+
+# ----------------------------------------------------------------- home IoT: pill box + bed/motion
+def test_fall_detected_by_bed_and_motion_sensors(world):
+    clock, chaos, eng, client, hubs = world
+    client.post("/api/sim", json={"patient_id": "P-103", "fall": True})
+    run(world, 0.5)
+    fall = [a for a in eng.alerts(0) if a["patient_id"] == "P-103" and a["kind"] == "FALL"]
+    assert fall and fall[0]["severity"] == "HIGH"
+    assert client.get("/api/state").json()["patients"][2]["tier"] in ("HIGH", "CRITICAL")
+    client.post("/api/sim", json={"patient_id": "P-103", "back_to_bed": True})
+    run(world, 0.25)
+    assert not any(a["kind"] == "FALL" and a["status"] != "RESOLVED" for a in eng.alerts(0) if a["patient_id"] == "P-103")
+
+
+def test_missed_dose_raises_medication_alert(world):
+    clock, chaos, eng, client, hubs = world
+    hubs["P-103"].p.adherence = 1.0
+    client.post("/api/sim", json={"patient_id": "P-103", "skip_dose": True})
+    run(world, 14)  # P-103 has doses at 08:00, 14:00 and 20:00 - at least one falls in any 14 h window
+    meds = [a for a in eng.alerts(100) if a["patient_id"] == "P-103" and a["kind"] == "MEDICATION"]
+    assert len(meds) == 1 and meds[0]["title"].startswith("Dose not taken")
+
+
+# ----------------------------------------------------------------- equipment, power, risk level, attendance
+def test_power_cut_keeps_monitoring_and_flags_oxygen_concentrator(world):
+    clock, chaos, eng, client, hubs = world
+    n0 = eng.db.execute("SELECT COUNT(*) FROM readings WHERE patient_id='P-102'").fetchone()[0]
+    chaos.power_cut = True
+    run(world, 1)
+    assert eng.db.execute("SELECT COUNT(*) FROM readings WHERE patient_id='P-102'").fetchone()[0] - n0 >= 12  # still monitoring
+    eq = [a for a in eng.alerts(0) if a["patient_id"] == "P-102" and a["kind"] == "EQUIPMENT"]
+    assert eq and eq[0]["severity"] == "HIGH" and "power cut" in eq[0]["title"]
+    assert not any(a["kind"] == "EQUIPMENT" for a in eng.alerts(0) if a["patient_id"] != "P-102")  # only O2 users
+    chaos.power_cut = False
+    run(world, 0.5)
+    assert not any(a["kind"] == "EQUIPMENT" and a["status"] != "RESOLVED" for a in eng.alerts(0))
+
+
+def test_concentrator_low_purity_alert(world):
+    clock, chaos, eng, client, hubs = world
+    client.post("/api/sim", json={"patient_id": "P-102", "o2_fault": True})
+    run(world, 0.25)
+    assert any(a["kind"] == "EQUIPMENT" and a["severity"] == "WATCH" for a in eng.alerts(0) if a["patient_id"] == "P-102")
+
+
+def test_risk_level_low_medium_high_with_short_reason(world):
+    clock, chaos, eng, client, hubs = world
+    st = client.get("/api/state").json()["patients"][0]
+    assert st["risk_level"] == "LOW" and st["risk_reason"].endswith(".")
+    client.post("/api/patients/P-101/notes", json={"author": "Sunita", "text": "She is breathless and has a fever"})
+    hubs["P-101"].phys.start_scenario("sepsis", clock.now() - 26 * 3600)
+    run(world, 1)
+    st = client.get("/api/state").json()["patients"][0]
+    assert st["risk_level"] == "HIGH" and "NEWS2" in st["risk_reason"] and "caregiver notes mention" in st["risk_reason"]
+
+
+def test_verified_attendance_by_bedside_tag(world):
+    clock, chaos, eng, client, hubs = world
+    client.post("/api/patients/P-101/checkin", json={"caregiver": "Sunita", "on": True, "method": "bedside-tag"})
+    p = client.get("/api/state").json()["patients"][0]
+    assert p["on_duty"]["verified"] is True
+    assert client.post("/api/patients/P-101/checkin", json={"caregiver": "x", "on": True, "method": "fake"}).status_code == 422

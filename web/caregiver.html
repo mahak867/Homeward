@@ -54,12 +54,14 @@
       sub_CRITICAL: "Stay with {n}. The care desk has been alerted. Call 108 if breathing is difficult or {n} is hard to wake.", sub_UNKNOWN: "The bedside hub is not sending data. Please check on {n} in person.",
       here: "I'm with the patient", done: "Done - all handled", call: "📞 Call care desk", sos: "🚑 Call 108", note: "Tell us what you notice", notePh: "e.g. saans phool rahi hai / she seems confused",
       send: "Send note", round: "Routine check - how is the patient responding?", A: "😊 Awake and talking normally", C: "😵 Confused / not making sense (new)", V: "🗣 Only responds when I speak loudly", P: "✋ Only responds to touch / pain", U: "⚠ Not responding at all",
+      checkin: "📍 Scan bedside tag - I'm here", checkedin: "✓ You are checked in at the bedside", risk: "Risk",
       understood: "We understood:", nothing: "Thank you - nothing worrying found in the note.", alerts: "Needs your attention", noAlerts: "No alerts right now 🙏", saved: "Saved", vitals: "Latest readings", ago: "min ago" },
     hi: { STABLE: "सब ठीक है", WATCH: "ध्यान से देखते रहें", HIGH: "जल्द डॉक्टर से दिखाना ज़रूरी", CRITICAL: "आपातकाल - अभी कदम उठाएँ", UNKNOWN: "रीडिंग नहीं दिख रही",
       sub_STABLE: "{n} के सभी संकेत सामान्य हैं।", sub_WATCH: "धीरे-धीरे कुछ बदल रहा है। {n} को देखें और नोट लिखें।", sub_HIGH: "एक घंटे के अंदर केयर डेस्क / डॉक्टर को फ़ोन करें।",
       sub_CRITICAL: "{n} के पास रहें। केयर डेस्क को सूचना दे दी गई है। साँस में बहुत तकलीफ़ हो या जगाना मुश्किल हो तो 108 पर कॉल करें।", sub_UNKNOWN: "बेडसाइड हब डेटा नहीं भेज रहा। कृपया {n} को खुद जाकर देखें।",
       here: "मैं मरीज़ के पास हूँ", done: "हो गया - संभाल लिया", call: "📞 केयर डेस्क को कॉल", sos: "🚑 108 पर कॉल", note: "आप क्या देख रहे हैं, बताइए", notePh: "जैसे: साँस फूल रही है / खाना नहीं खाया",
       send: "नोट भेजें", round: "नियमित जाँच - मरीज़ कैसे जवाब दे रहे हैं?", A: "😊 जागे हुए हैं, सामान्य बात कर रहे हैं", C: "😵 उलझन में हैं / अजीब बातें (नया)", V: "🗣 सिर्फ़ ज़ोर से बोलने पर जवाब", P: "✋ सिर्फ़ छूने / दर्द पर जवाब", U: "⚠ बिल्कुल जवाब नहीं दे रहे",
+      checkin: "📍 बेडसाइड टैग स्कैन करें - मैं यहाँ हूँ", checkedin: "✓ आप मरीज़ के पास चेक-इन हैं", risk: "जोखिम",
       understood: "हमने समझा:", nothing: "धन्यवाद - नोट में कोई चिंता की बात नहीं मिली।", alerts: "आपका ध्यान चाहिए", noAlerts: "अभी कोई अलर्ट नहीं 🙏", saved: "सेव हो गया", vitals: "ताज़ा रीडिंग", ago: "मिनट पहले" },
   };
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -80,13 +82,15 @@
     const p = S.patients.find((x) => x.id === pid); const first = p.name.split(" ")[0] + (lang === "hi" ? " जी" : "");
     const tier = ["STALE", "OFFLINE", "NO_DATA"].includes(p.data_state) ? "UNKNOWN" : p.tier;
     const alerts = S.alerts.filter((a) => a.patient_id === pid && a.status !== "RESOLVED");
-    const key = JSON.stringify([tier, alerts.map((a) => [a.id, a.status, a.severity]), p.latest && p.latest.ts, lang, lastNote]);
+    const key = JSON.stringify([tier, alerts.map((a) => [a.id, a.status, a.severity]), p.latest && p.latest.ts, lang, lastNote, p.on_duty, p.risk_reason]);
     if (!force && key === lastKey) return; lastKey = key;
     const me = p.contacts[0].name;
     const l = p.latest || {};
     const typing = document.activeElement && document.activeElement.id === "note" ? document.getElementById("note").value : null;
     document.getElementById("app").innerHTML = `
-      <div class="status" style="--c:var(--${tier})"><div class="big">${t(tier)}</div><div class="sub">${t("sub_" + tier, first)}</div></div>
+      <div class="status" style="--c:var(--${tier})"><div class="big">${t(tier)}</div><div class="sub">${t("sub_" + tier, first)}</div>
+        ${tier !== "UNKNOWN" && p.risk_level ? `<div class="sub" style="margin-top:8px;font-weight:700">${t("risk")}: ${p.risk_level}</div>${p.risk_reason ? `<div class="sub" style="font-size:13px">${esc(p.risk_reason)}</div>` : ""}` : ""}</div>
+      ${p.on_duty && p.on_duty.verified ? `<div class="card" style="text-align:center;color:var(--STABLE);font-weight:700">${t("checkedin")}</div>` : `<button class="bigbtn" id="tag" style="background:#4f46e5">${t("checkin")}</button>`}
       <div class="card"><h3>${t("alerts")}</h3>${alerts.length ? alerts.map((a) => `
         <div class="card alert" style="--c:var(--${a.severity});margin-bottom:8px"><div class="t">${esc(a.title)}</div>
         ${(a.detail.why || []).slice(0, 2).map((w) => `<div class="muted">• ${esc(w)}</div>`).join("")}
@@ -98,8 +102,10 @@
       <div class="card"><h3>${t("round")}</h3><div class="acv">${["A", "C", "V", "P", "U"].map((k) => `<button data-acvpu="${k}">${t(k)}</button>`).join("")}</div></div>
       <div class="card"><h3>${t("vitals")} <span class="muted">(${p.data_age_min ?? "-"} ${t("ago")})</span></h3><div class="vit">
         <div><b>${l.hr != null ? Math.round(l.hr) : "-"}</b><span>❤️ pulse</span></div><div><b>${l.spo2 != null ? Math.round(l.spo2) : "-"}%</b><span>🫁 oxygen</span></div><div><b>${l.temp != null ? (+l.temp).toFixed(1) : "-"}°</b><span>🌡 temp</span></div></div></div>
-      <div class="muted" style="text-align:center">Prototype · synthetic data · not a medical device</div>`;
+      <div class="muted" style="text-align:center">HomeWard · decision support, not a diagnosis</div>`;
     if (typing !== null) { const n = document.getElementById("note"); n.value = typing; n.focus(); }
+    const tag = document.getElementById("tag");
+    if (tag) tag.onclick = async () => { await api(`/api/patients/${pid}/checkin`, { caregiver: me, on: true, method: "bedside-tag" }); toast(t("saved")); S = await api("/api/state"); render(true); };
     document.querySelectorAll("[data-ack]").forEach((b) => b.onclick = async () => { await api(`/api/alerts/${b.dataset.ack}/ack`, { by: me }); toast(t("saved")); S = await api("/api/state"); render(true); });
     document.querySelectorAll("[data-done]").forEach((b) => b.onclick = async () => { await api(`/api/alerts/${b.dataset.done}/resolve`, { by: me, action: "Handled at home by caregiver", note: "" }); toast(t("saved")); S = await api("/api/state"); render(true); });
     document.querySelectorAll("[data-acvpu]").forEach((b) => b.onclick = async () => { await api(`/api/patients/${pid}/rounds`, { caregiver: me, acvpu: b.dataset.acvpu, note: "" }); toast(t("saved")); });

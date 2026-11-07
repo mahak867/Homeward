@@ -3,121 +3,138 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0d9488">
   <title>HomeWard · Smart Health</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header class="top">
-    <div class="brand"><div class="logo">🏠</div><div>Smart Health · HomeWard<small>A hospital ward that fits inside a bedroom</small></div></div>
-    <div class="spacer"></div>
-    <div class="speed" title="Simulated time runs faster so a 24-48 h deterioration fits in a demo">
-      Sim speed
-      <button data-speed="60">1 min/s</button>
-      <button data-speed="300">5 min/s</button>
-      <button data-speed="900">15 min/s</button>
-      <button data-speed="1800">30 min/s</button>
-      <button id="pause">Pause</button>
+  <header class="appbar">
+    <div class="brand">
+      <div class="logo"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/><path d="M8 15h2l1.2-2.5L13 17l1.2-2H16"/></svg></div>
+      <div><b>HomeWard</b><small>by Smart Health · a hospital ward in a bedroom</small></div>
     </div>
-    <div class="clock" id="clock">--</div>
-    <span class="pill ok" id="conn">Live</span>
-    <button class="topbtn" id="soundBtn" title="Play a sound for HIGH/CRITICAL alerts">🔈 Sound off</button>
-    <button class="topbtn lab" id="labBtn">🧪 Resilience Lab</button>
-    <a class="topbtn" href="/caregiver" target="_blank" style="text-decoration:none">📱 Caregiver app</a>
+    <div class="kpis-bar" id="kpis"></div>
+    <div class="spacer"></div>
+    <div class="seg" id="speedSeg" title="Simulation speed">
+      <button data-speed="60">1m/s</button><button data-speed="300">5m/s</button><button data-speed="900">15m/s</button><button data-speed="1800">30m/s</button><button id="pause">Pause</button>
+    </div>
+    <span class="clock" id="clock">--</span>
+    <span class="live" id="conn"><i></i><span>Live</span></span>
+    <button class="btn ghost sm" id="themeBtn" title="Toggle theme">◐</button>
+    <button class="btn ghost sm" id="soundBtn" title="Alert sound">🔈</button>
+    <button class="btn sm" id="labBtn">🧪 Resilience Lab</button>
+    <a class="btn sm" href="/caregiver" target="_blank">📱 Caregiver app</a>
+    <button class="btn accent sm" id="tourBtn">▶ Guided demo</button>
   </header>
-  <div class="disclaimer">Prototype for <b>Operation Ward Zero</b> · all patients and data are <b>synthetic</b> · decision support only, <b>not a medical device</b> and not a diagnosis.</div>
-  <div id="offline" class="offline-banner hidden">Connection to the HomeWard platform lost - retrying. Do not rely on this screen; check patients in person.</div>
+  <div id="offline" class="offline-banner hidden">Connection to the HomeWard platform lost - retrying. Check patients in person until it's back.</div>
 
   <section id="lab" class="lab hidden">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-      <h3>🧪 Resilience Lab - break things on purpose and watch the system cope</h3>
-      <span class="chip">Every switch below is a real fault in the running system, not an animation.</span>
+    <div class="lab-h">
+      <h3>🧪 Resilience Lab <span style="font-weight:500;color:var(--muted);font-size:13px">- inject real faults into the running system and watch it cope</span></h3>
+      <button class="btn ghost sm" id="labClose">Close</button>
     </div>
     <div class="labgrid">
-      <div>
-        <div class="toggle"><div><b>Internet outage (all homes)</b><small>Hubs keep recording to their local outbox; critical patients trigger an in-room alarm; everything syncs on reconnect.</small></div><label class="sw"><input type="checkbox" data-chaos="network_down"><span></span></label></div>
-        <div class="toggle"><div><b>Duplicate packet storm</b><small>Every batch is sent twice. Server ingestion is idempotent on (device, sequence).</small></div><label class="sw"><input type="checkbox" data-chaos="duplicate_storm"><span></span></label></div>
-        <div class="toggle"><div><b>Out-of-order delivery</b><small>Readings arrive shuffled. Analysis keys on measurement time, not arrival time.</small></div><label class="sw"><input type="checkbox" data-chaos="out_of_order"><span></span></label></div>
-        <div class="toggle"><div><b>AI service crash</b><small>Circuit breaker opens; transparent rule-based trend fallback takes over. NEWS2 safety floor is unaffected.</small></div><label class="sw"><input type="checkbox" data-chaos="ml_down"><span></span></label></div>
-        <div class="toggle"><div><b>Bedside hub power loss</b><small>Selected patient's hub goes silent. Status turns UNKNOWN (never "stable"), then a device-offline alert escalates.</small></div><label class="sw"><input type="checkbox" id="deadToggle"><span></span></label></div>
+      <div id="labToggles">
+        <div class="toggle"><div><b>Internet outage (all homes)</b><small>Hubs keep recording locally, sound an in-room alarm for critical patients, and replay everything on reconnect.</small></div><label class="sw"><input type="checkbox" data-chaos="network_down"><span></span></label></div>
+        <div class="toggle"><div><b>Duplicate packet storm</b><small>Every upload is sent twice. Ingestion is idempotent on (device, sequence).</small></div><label class="sw"><input type="checkbox" data-chaos="duplicate_storm"><span></span></label></div>
+        <div class="toggle"><div><b>Late / out-of-order delivery</b><small>Readings are held back and shuffled. Analysis keys on measurement time, not arrival.</small></div><label class="sw"><input type="checkbox" data-chaos="out_of_order"><span></span></label></div>
+        <div class="toggle"><div><b>AI service crash</b><small>Circuit breaker opens; transparent rule fallback takes over. The NEWS2 safety floor never stops.</small></div><label class="sw"><input type="checkbox" data-chaos="ml_down"><span></span></label></div>
+        <div class="toggle"><div><b>Power cut (all homes)</b><small>Hubs switch to battery and keep monitoring; oxygen concentrators stop, so oxygen-dependent patients get an immediate equipment alert.</small></div><label class="sw"><input type="checkbox" data-chaos="power_cut"><span></span></label></div>
+        <div class="toggle"><div><b>Bedside hub failure <span id="deadName" style="color:var(--muted);font-weight:500"></span></b><small>Status turns UNKNOWN (never "stable" on old data), then a device-offline alert escalates.</small></div><label class="sw"><input type="checkbox" id="deadToggle"><span></span></label></div>
       </div>
-      <div>
-        <h3 style="margin-bottom:8px">Live reliability counters</h3>
-        <div class="kpis" id="kpis"></div>
-      </div>
-      <div>
-        <h3 style="margin-bottom:8px">AI model card (held-out synthetic cohort)</h3>
-        <div id="modelcard" class="modelcard"></div>
-      </div>
+      <div><div class="subhead" style="margin:0 0 8px">Live reliability counters</div><div class="kgrid" id="kcounters"></div></div>
+      <div><div class="subhead" style="margin:0 0 8px">Early-warning validation (held-out test patients)</div><div id="modelcard"></div></div>
     </div>
   </section>
 
-  <main class="grid">
+  <main class="layout">
     <aside class="stack">
-      <div class="panel"><div class="hd"><h3>Homes being monitored</h3><span class="chip" id="wardSummary"></span></div>
-        <div class="bd stack" id="plist" style="gap:10px"></div></div>
+      <div class="card">
+        <div class="card-h"><h3>Ward</h3><span class="chip" id="wardSummary"></span></div>
+        <div class="card-b stack" id="plist" style="gap:10px"></div>
+      </div>
     </aside>
 
-    <section class="panel" id="detail">
+    <section class="card" id="detail">
       <div class="phead">
-        <div>
-          <h2 id="pname">Loading…</h2>
-          <div class="sub" id="pcond"></div>
-          <div class="chips" id="pchips"></div>
+        <div style="display:flex;gap:14px;align-items:center">
+          <div class="avatar lg" id="pavatar"></div>
+          <div><h2 id="pname">Loading…</h2><div class="sub" id="pcond"></div><div class="chips" id="pchips"></div></div>
         </div>
         <div class="actions">
-          <button class="btn primary" id="sbarBtn">📞 Call clinician (SBAR)</button>
-          <button class="btn" id="roundBtn">✅ Log round check</button>
-          <button class="btn" id="dutyBtn">🧑‍⚕️ Check in</button>
+          <button class="btn primary" id="sbarBtn">📞 Call clinician · SBAR</button>
+          <button class="btn" id="roundBtn">✅ Round check</button>
+          <button class="btn" id="dutyBtn">Check in</button>
         </div>
       </div>
-      <div class="statusbar" id="statusbar"></div>
-      <div class="tiles" id="tiles"></div>
-      <div class="chartwrap">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-          <div class="legend"><span><i style="background:#2563eb"></i>Reading</span><span><i style="background:#0f766e;height:2px"></i>Personal baseline</span><span><i style="background:#e5e7eb;height:8px"></i>NEWS2 normal band</span><span>✕ artifact (ignored)</span></div>
-          <div class="range tabs" id="rangeTabs"><button data-h="12">12 h</button><button data-h="24" class="on">24 h</button><button data-h="48">48 h</button></div>
+      <div class="status" id="statusbar"></div>
+      <div class="tabs" id="ptabs"><button data-tab="overview" class="on">Overview</button><button data-tab="care">Devices & care</button><button data-tab="timeline">Timeline</button></div>
+
+      <div class="tabpane" id="tab-overview">
+        <div class="tiles" id="tiles"></div>
+        <div class="chartwrap" id="chartwrap">
+          <div class="chart-head">
+            <div class="legend"><span><i style="background:var(--chart-line)"></i>Reading</span><span><i style="background:var(--chart-base)"></i>Personal baseline</span><span><i style="background:var(--stable);opacity:.35;height:8px"></i>NEWS2 0-point band</span><span>✕ artifact ignored</span><span><i style="background:var(--watch);width:6px;height:6px;border-radius:50%"></i>arrived late</span></div>
+            <div class="seg" id="rangeSeg"><button data-h="12">12h</button><button data-h="24" class="on">24h</button><button data-h="48">48h</button></div>
+          </div>
+          <canvas id="chart" style="height:220px"></canvas>
+          <canvas id="chart2" style="height:96px;margin-top:4px"></canvas>
+          <div class="legend" style="margin-top:4px"><span><i style="background:var(--risk)"></i>24 h deterioration risk (AI)</span><span><i style="background:var(--n2)"></i>NEWS2</span><span><i style="background:var(--risk);opacity:.4"></i>Early-warning threshold</span></div>
+          <div class="crosshair" id="cross"></div><div class="tip" id="tip"></div>
         </div>
-        <canvas id="chart"></canvas>
-        <canvas id="chart2" style="height:110px"></canvas>
-        <div class="legend"><span><i style="background:#7c3aed"></i>24 h deterioration risk (AI)</span><span><i style="background:#ea580c"></i>NEWS2</span><span><i style="background:#7c3aed;opacity:.35"></i>Early-warning threshold</span></div>
-      </div>
-      <div class="why">
-        <div class="box"><h4>Why this risk level? - NEWS2 safety floor</h4><div id="n2"></div></div>
-        <div class="box"><h4>What's coming? - 24 h early warning</h4><div id="fc"></div></div>
-      </div>
-      <div class="notes">
-        <div class="box">
-          <h4>Caregiver observation (English / हिन्दी / Hinglish)</h4>
-          <textarea id="noteText" placeholder="What do you notice? e.g. 'saans phool rahi hai, khana nahi khaya'"></textarea>
-          <div class="examples" id="examples"></div>
-          <div style="display:flex;gap:6px"><input id="noteAuthor" placeholder="Your name" style="flex:1"><button class="btn primary" id="noteBtn">Add note</button></div>
-          <div class="understood" id="understood"></div>
+        <div class="why">
+          <div class="box" id="n2box"><h4><span class="step">NOW</span>Why this level? NEWS2 safety floor</h4><div id="n2"></div></div>
+          <div class="box" id="fcbox"><h4><span class="step">NEXT 24 H</span>What's coming? Early warning</h4><div id="fc"></div></div>
         </div>
-        <div class="box"><h4>Notes & round checks</h4><div class="notelist" id="notelist"></div></div>
       </div>
-      <div class="sim">
-        <b>Demo simulator:</b>
-        <select id="scnSel"></select><button class="btn small" id="scnBtn">Start deterioration</button>
-        <button class="btn small" id="artBtn">Displace finger sensor</button>
-        <button class="btn small" id="resetBtn">Recover patient</button>
-        <span id="hubinfo"></span>
+
+      <div class="tabpane hidden" id="tab-care">
+        <div class="devgrid" id="devgrid"></div>
+        <div class="care">
+          <div class="box" id="notebox">
+            <h4>Caregiver observation <span class="chip">English · हिन्दी · Hinglish</span></h4>
+            <textarea id="noteText" placeholder="What do you notice? e.g. 'saans phool rahi hai, khana nahi khaya'"></textarea>
+            <div class="examples" id="examples"></div>
+            <div style="display:flex;gap:6px"><input id="noteAuthor" placeholder="Your name" style="flex:1"><button class="btn primary" id="noteBtn">Add note</button></div>
+            <div class="understood" id="understood"></div>
+          </div>
+          <div class="box"><h4>Notes & round checks</h4><div class="list" id="notelist"></div></div>
+        </div>
+      </div>
+
+      <div class="tabpane hidden" id="tab-timeline"><div class="timeline" id="timeline"></div></div>
+
+      <div class="simbar">
+        <b>Demo controls</b>
+        <select id="scnSel"></select><button class="btn sm" id="scnBtn">Start deterioration</button>
+        <button class="btn sm" id="artBtn">Displace finger sensor</button>
+        <button class="btn sm" id="fallBtn">Fall</button>
+        <button class="btn sm" id="doseBtn">Skip next dose</button>
+        <button class="btn sm" id="o2Btn">O₂ concentrator fault</button>
+        <button class="btn sm" id="resetBtn">Recover</button>
+        <span id="hubinfo" style="margin-left:auto"></span>
       </div>
     </section>
 
-    <aside class="right stack">
-      <div class="panel">
-        <div class="hd"><h3>Alerts & escalation</h3><div class="tabs" id="alertTabs"><button data-f="open" class="on">Open</button><button data-f="all">All</button></div></div>
-        <div class="bd scroll" id="alerts"></div>
+    <aside class="rail-right stack">
+      <div class="card" id="alertsCard">
+        <div class="card-h"><h3>Alerts & escalation</h3><div class="seg" id="alertSeg"><button data-f="open" class="on">Open</button><button data-f="all">All</button></div></div>
+        <div class="card-b scroll" id="alerts"></div>
       </div>
-      <div class="panel">
-        <div class="hd"><h3>Activity</h3><div class="tabs" id="actTabs"><button data-t="msgs" class="on">Notifications</button><button data-t="resp">Caregivers</button><button data-t="audit">Audit log</button></div></div>
-        <div class="bd scroll" id="activity" style="max-height:330px"></div>
+      <div class="card">
+        <div class="card-h"><h3>Activity</h3><div class="seg" id="actSeg"><button data-t="msgs" class="on">Sent</button><button data-t="resp">Response</button><button data-t="audit">Audit</button></div></div>
+        <div class="card-b scroll" id="activity" style="max-height:340px"></div>
       </div>
     </aside>
   </main>
+  <footer class="foot">HomeWard prototype · clinical decision support, not a diagnosis · NEWS2 © Royal College of Physicians</footer>
 
-  <div id="modal" class="modal hidden"><div class="card" id="modalCard"></div></div>
+  <div id="modal" class="modal"><div class="sheet" id="modalCard"></div></div>
   <div class="toasts" id="toasts"></div>
+  <div id="tour" class="tour hidden"></div>
   <script src="/static/app.js"></script>
+  <script src="/static/tour.js"></script>
 </body>
 </html>

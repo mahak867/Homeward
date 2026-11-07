@@ -46,7 +46,7 @@ def main():
         f.unlink()
     clock, chaos = SimClock(speed=a.speed), Chaos()
     engine = Engine(data / "platform.db", clock, chaos)
-    url = f"http://{a.host}:{a.port}"
+    url = f"http://127.0.0.1:{a.port}"  # hubs reach the platform locally even when serving on 0.0.0.0
     hubs = {p.patient_id: EdgeHub(p, url, clock, chaos, data / f"edge_{p.patient_id}.db", seed=i + 1)
             for i, p in enumerate(DEMO_PATIENTS)}
     app = create_app(engine, hubs)
@@ -74,7 +74,7 @@ def main():
             now = clock.now()
             hubs["P-103"].phys.start_scenario("hf_decompensation", now - 6 * 3600)
             hubs["P-101"].phys.start_scenario("sepsis", now)
-        print(f"\n  HomeWard is running:  {url}   (caregiver view: {url}/caregiver)\n")
+        print(f"\n  HomeWard is running:  http://{a.host}:{a.port}   (caregiver app: /caregiver)\n")
 
     threading.Thread(target=start_hubs, daemon=True).start()
     uvicorn.run(app, host=a.host, port=a.port, log_level="warning")

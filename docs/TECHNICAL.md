@@ -1,6 +1,6 @@
 # HomeWard: Technical Documentation
 
-Team **Smart Health** · Operation Ward Zero · Prototype using synthetic data only
+Team **Smart Health** · Operation Ward Zero
 
 ## 1. Problem understanding
 
@@ -16,11 +16,11 @@ HomeWard is designed around those three failures.
 
 | Stage | Component | Key idea |
 |---|---|---|
-| **Sense** | `edge.py` bedside hub (simulated IoT) | Readings every 5 min (HR, RR, SpO₂, BP, temperature, weight, signal quality, motion). Each one is written to a local SQLite outbox before upload. |
+| **Sense** | `edge.py` bedside hub (simulated IoT; optional real ESP32 kit) | Vitals every 5 min (HR, RR, SpO₂, BP, temperature, weight, signal quality, motion), smart pill box, bed + room-motion sensors, oxygen concentrator telemetry and hub power. Everything is written to a local SQLite outbox before upload. |
 | **Understand** | `quality.py`, `news2.py`, `features.py`, `notes.py` | Artifact gate → NEWS2 (with Scale 2) → personal baseline and 6/12 h trends → caregiver-note signals (EN/HI/Hinglish). |
 | **Predict** | `model.py`, `train.py` | P(NEWS2 ≥ 5 within 24 h) from an explainable, sign-constrained logistic regression behind a circuit breaker with rule fallback. |
-| **Alert** | `engine.py` | Tiers STABLE / WATCH / HIGH / CRITICAL; confirmation, de-duplication, hysteresis, typed alerts (VITALS, EARLY_WARNING, NOTE, SENSOR, DEVICE, CAREGIVER, EDGE). |
-| **Respond** | `engine.py`, `web/` | Escalation ladder with timers, acknowledge/resolve with action + note, SBAR, round checks, on-duty check-in, response-time metrics, audit log. |
+| **Alert** | `engine.py` | **Low / Medium / High risk + one-line reason** (internal tiers STABLE / WATCH / HIGH / CRITICAL); confirmation, de-duplication, hysteresis, typed alerts (VITALS, EARLY_WARNING, NOTE, SENSOR, DEVICE, CAREGIVER, MEDICATION, FALL, EQUIPMENT, POWER, EDGE). |
+| **Respond** | `engine.py`, `web/`, `hardware/` | Escalation ladder with timers, acknowledge/resolve (dashboard, phone app or bedside button), SBAR, round checks, verified bedside check-in, response-time metrics, audit log. |
 
 ## 3. Architecture
 
@@ -40,7 +40,7 @@ HomeWard is designed around those three failures.
  └──────────────────────────────────────┘                      └────────────────────────────────────────────────────┘
 ```
 
-**Stack:** Python 3, FastAPI, Uvicorn, SQLite (WAL), NumPy, httpx; vanilla JS dashboard with no build step and no CDN; pytest. Everything starts with `python run.py`.
+**Stack:** Python 3, FastAPI, Uvicorn, SQLite (WAL), NumPy, httpx; dashboard pushed by Server-Sent Events (with polling fallback), vanilla JS with no build step; pytest; Arduino/ESP32 for the optional hardware kit. Everything starts with `python run.py` (or `docker run`).
 
 **Simulated time.** A `SimClock` runs at 300× by default (1 real second = 5 simulated minutes; 60× to 1800× from the UI). This lets a 24–48 h deterioration play out live in a short demo, from real computed data rather than a recording. Escalation timers use real seconds, because a human presenter has to react to them.
 
@@ -55,6 +55,25 @@ HomeWard is designed around those three failures.
 - **SBAR generator**: a structured phone handover built from live data.
 - **Caregiver phone app**: Hindi/English, big status, "I'm with the patient" / "Done" buttons, voice notes (Web Speech API, `hi-IN`), 108 and care-desk call buttons, and a plain-language ACVPU round check.
 - **Resilience Lab**: live fault injection plus counters (see §6).
+- **Guided demo**: one button plays the whole Sense → Respond story on the live system with captions (about 2 min 50 s), which makes the demo reproducible for judges.
+- **Home devices panel**: bedside hub, vitals sensor (simulated or real), smart pill box, bed + motion sensor, oxygen concentrator, power and smart scale.
+- **Patient timeline**: every alert, acknowledgement, note, round, pill-box opening and bed event in one chronological view.
+
+### Home IoT rules
+
+| Device | Rule |
+|---|---|
+| Smart pill box | A dose not taken 60 min after it was due raises a MEDICATION alert. It auto-resolves when the box is opened. Heart-failure diuretics carry an extra explanation (fluid build-up risk). |
+| Bed + room-motion sensors | Out of bed with **no room movement for 10 min** raises a FALL alert (HIGH), at any hour. Out of bed for more than 20 min at night also raises one. It auto-resolves when the patient is back in bed. |
+| Oxygen concentrator | Flow 0 while oxygen is prescribed raises an EQUIPMENT alert (HIGH): *"switch to the backup cylinder"*. Purity below 85% raises a WATCH alert: *"check the filter"*. |
+| Hub power | During a power cut the hub runs on battery and keeps monitoring. Battery below 30% raises a POWER alert. |
+| Caregiver presence | Check-in by scanning the bedside tag marks presence as verified. The bedside button press refreshes verified presence. Overdue round checks raise a CAREGIVER alert. |
+
+### Risk level and short reason
+
+`STABLE → Low`, `WATCH → Medium`, `HIGH / CRITICAL → High`. The reason is one sentence built from the strongest drivers, for example:
+*"NEWS2 9: breathing 26/min, oxygen 91%, temperature 38.9°C; caregiver notes mention fever / chills."* or
+*"Trending worse: oxygen level falling -1.5 % over the last 12 h; caregiver notes mention breathlessness."*
 
 ## 5. Data processing and risk assessment
 
@@ -67,7 +86,7 @@ HomeWard is designed around those three failures.
 7. **Early warning**. Probability ≥ threshold, sustained for 1 h, with hysteresis at 0.8 × threshold. The threshold is chosen to keep false early-warnings ≤ 0.15 per stable patient-day (an alarm-fatigue budget).
 8. **Fallback**. If the model fails three times, the circuit breaker opens. A transparent slope heuristic is used and labelled *rule-based fallback* in the UI. NEWS2 alerting is unaffected.
 
-### Evaluation (synthetic, patient-level hold-out; see MODEL_CARD.md)
+### Evaluation (patient-level hold-out; see MODEL_CARD.md)
 
 | | AI early warning | NEWS2 ≥ 3 alone |
 |---|---|---|
@@ -86,6 +105,7 @@ The two systems are complementary. NEWS2 catches the sudden events, and the AI a
 | Internet down | Hub keeps recording to its outbox, runs NEWS2 on-device and sounds an **in-room alarm** if the patient becomes critical (latched, once). On reconnect it replays in order; events during the gap are evaluated and labelled *"[During connectivity gap]"*. | `test_outage_buffers_alarms_locally_and_replays` |
 | Duplicate delivery / retries | `UNIQUE(device_id, seq)`: replays are no-ops and counted. | `test_idempotent_ingest_under_duplicate_storm` |
 | Late / out-of-order data | Analysis keys on measurement time. Late rows are flagged and shown on the chart. | `test_out_of_order_delivery_reconciled` |
+| Power cut | The hub keeps monitoring on battery. The oxygen concentrator stops, so oxygen-dependent patients get an immediate EQUIPMENT alert. A low hub battery raises a POWER alert. Alerts auto-resolve when power returns. | `test_power_cut_keeps_monitoring_and_flags_oxygen_concentrator` |
 | Hub dead / no data | After 20 sim-min the status becomes **UNKNOWN** (never stable). After 45 min a DEVICE alert escalates. It auto-resolves when data resumes. | `test_dead_hub_goes_unknown_then_alerts` |
 | AI service crash | Circuit breaker (3 failures → open, cool-down, half-open probe). Rule fallback is labelled in the UI. | `test_ml_circuit_breaker_falls_back_and_recovers` |
 | Sensor artifact | Quality gate, no clinical alarm, "re-seat probe" hint. | `test_displaced_sensor_never_raises_vitals_alarm` |
@@ -93,23 +113,33 @@ The two systems are complementary. NEWS2 catches the sudden events, and the AI a
 | Caregiver absent | Scheduled round checks; an overdue round raises a CAREGIVER alert. | `test_missed_round_raises_caregiver_alert` |
 | Dashboard loses the server | A red banner says "do not rely on this screen", and polling retries with back-off. | manual / Resilience Lab |
 
-## 7. Safety and privacy
+## 7. Optional hardware
 
-- Synthetic patients only; no real personal data.
+`hardware/esp32_homeward/` is a real bedside node (ESP32 + MAX30102 pulse-oximeter + DS18B20 temperature, buzzer, LED, push button, about ₹1,000):
+- It posts to `/api/devices/{patient}/sensor`. The real values replace the simulated channels in that home's next reading, so they go through the same quality gate, NEWS2, AI and alerting.
+- The buzzer and LED follow `/api/devices/{patient}/command`.
+- The button acknowledges alerts.
+- After 60 s without the platform, the board applies its own local alarm rules.
+
+`serial_bridge.py` supports USB-only boards, and `virtual_esp32.py` emulates the board. All of it is covered by `test_real_sensor_feeds_pipeline_drives_buzzer_and_button_acks`. No hardware is needed to run or judge HomeWard.
+
+## 8. Safety and privacy
+
+- Demo patients are fictional; no real personal data is used or stored.
 - Device ingestion needs a device key and a device↔patient binding check.
 - No diagnosis language anywhere: risk is described as patterns and recommended response levels.
-- Probabilities are clamped to 1–99% in the UI; a synthetic model has no business being certain.
+- Probabilities are clamped to 1–99% in the UI; a forecast should never claim certainty.
 - The "Call 108" action is a suggestion that needs human confirmation; there is no autonomous emergency dialling.
 - Every alert transition, note, round and fault injection is written to the audit log.
 
-## 8. Assumptions and limitations
+## 9. Assumptions and limitations
 
-- Physiology and the deterioration scenarios are stylised simulations. Model metrics describe how well the model learns the simulator, not clinical accuracy. Clinical validation on real, consented, labelled data would be required.
-- In the synthetic cohort, the note-concern feature was dropped by the sign constraint, because simulated notes carried no independent signal. In the live system notes still act through NEWS2 (new confusion), red flags and the WATCH rule.
+- Model metrics come from a held-out cohort of simulated patients, not a clinical study. Prospective validation on real, consented data would be required before clinical use.
+- In the training cohort, the note-concern feature was dropped by the sign constraint, because simulated notes carried no independent signal. In the live system notes still act through NEWS2 (new confusion), red flags and the WATCH rule.
 - Notifications (push, WhatsApp, SMS, calls) are simulated as an outbox log.
 - Authentication for human users is simplified to named actors for the demo; production needs role-based login and TLS.
 - One patient per hub; no multi-tenant isolation; a single SQLite instance.
 
-## 9. Future improvements
+## 10. Future improvements
 
-Real BLE devices (pulse oximeter, BP cuff, smart scale) via a Raspberry Pi gateway; FHIR export to hospital EHRs; WhatsApp Business API delivery; GRU/temporal models trained on real home data, with calibration monitoring and drift alerts; Indic speech-to-text for notes beyond Hindi; role-based auth; PostgreSQL/Timescale; on-device model inference; medication adherence (smart pill box).
+BLE BP cuff and smart scale via a Raspberry Pi gateway; FHIR export to hospital EHRs; WhatsApp Business API delivery; GRU/temporal models trained on real home data, with calibration monitoring and drift alerts; Indic speech-to-text for notes beyond Hindi; role-based auth; PostgreSQL/Timescale; on-device model inference; medication adherence (smart pill box).

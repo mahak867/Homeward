@@ -67,6 +67,8 @@ class PatientProfile:
     meds: list = field(default_factory=list)
     contacts: list = field(default_factory=list)
     language: str = "en"
+    schedule: list = field(default_factory=list)  # smart pill box: [{"hour": 8, "med": "..."}]
+    adherence: float = 0.97
 
 
 # Synthetic, fictional patients (no real people).
@@ -84,6 +86,7 @@ DEMO_PATIENTS: list[PatientProfile] = [
             {"level": 4, "role": "Emergency", "name": "Ambulance 108 + Dr. Rao", "phone": "108"},
         ],
         language="hi",
+        schedule=[{"hour": 8, "med": "Amoxicillin-clavulanate 625 mg + Metformin"}, {"hour": 20, "med": "Amoxicillin-clavulanate 625 mg + Metformin"}],
     ),
     PatientProfile(
         "P-102", "Rajesh Iyer", 67, "M",
@@ -97,6 +100,7 @@ DEMO_PATIENTS: list[PatientProfile] = [
             {"level": 3, "role": "Tele-nurse care desk", "name": "HomeWard Care Desk", "phone": "+91-90000-00999"},
             {"level": 4, "role": "Emergency", "name": "Ambulance 108 + Dr. Menon", "phone": "108"},
         ],
+        schedule=[{"hour": 9, "med": "Tiotropium inhaler"}],
     ),
     PatientProfile(
         "P-103", "Anil Mehta", 61, "M",
@@ -110,6 +114,8 @@ DEMO_PATIENTS: list[PatientProfile] = [
             {"level": 3, "role": "Tele-nurse care desk", "name": "HomeWard Care Desk", "phone": "+91-90000-00999"},
             {"level": 4, "role": "Emergency", "name": "Ambulance 108 + Dr. Shah", "phone": "108"},
         ],
+        schedule=[{"hour": 8, "med": "Furosemide 40 mg (water tablet)"}, {"hour": 14, "med": "Sacubitril-valsartan + Bisoprolol"}, {"hour": 20, "med": "Sacubitril-valsartan"}],
+        adherence=0.93,
     ),
 ]
 

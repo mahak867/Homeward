@@ -31,7 +31,7 @@ PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS readings(
   id INTEGER PRIMARY KEY, patient_id TEXT, device_id TEXT, seq INTEGER, ts REAL,
   hr REAL, rr REAL, spo2 REAL, sbp REAL, dbp REAL, temp REAL, weight REAL, sqi REAL, motion REAL,
-  on_oxygen INTEGER, artifact INTEGER, artifact_reason TEXT, received_real REAL, late INTEGER,
+  on_oxygen INTEGER, artifact INTEGER, artifact_reason TEXT, received_real REAL, late INTEGER, source TEXT,
   UNIQUE(device_id, seq));
 CREATE INDEX IF NOT EXISTS ix_read ON readings(patient_id, ts);
 CREATE TABLE IF NOT EXISTS edge_events(
@@ -116,10 +116,10 @@ class Engine:
                 try:
                     self.db.execute(
                         "INSERT INTO readings(patient_id, device_id, seq, ts, hr, rr, spo2, sbp, dbp, temp, weight,"
-                        " sqi, motion, on_oxygen, artifact, artifact_reason, received_real, late)"
-                        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        " sqi, motion, on_oxygen, artifact, artifact_reason, received_real, late, source)"
+                        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (pid, dev, r["seq"], r["ts"], *[r.get(c) for c in COLS], int(bool(r.get("on_oxygen"))),
-                         int(q["artifact"]), "; ".join(q["issues"]) or None, now_real, is_late))
+                         int(q["artifact"]), "; ".join(q["issues"]) or None, now_real, is_late, r.get("source", "sim")))
                 except sqlite3.IntegrityError:
                     dup += 1
                     continue
@@ -134,6 +134,8 @@ class Engine:
                 try:
                     self.db.execute("INSERT INTO edge_events(patient_id, device_id, eid, ts, kind, detail) VALUES(?,?,?,?,?,?)",
                                     (pid, dev, e["eid"], e["ts"], e["kind"], json.dumps(e.get("detail", {}))))
+                    if e["kind"] in ("PILLBOX_OPEN", "BED_EXIT", "BED_RETURN", "ROOM_STILL"):
+                        self._iot_event(pid, e)
                     if e["kind"] == "LOCAL_ALARM":
                         self.m["edge_local_alarms"] += 1
                         self._raise(pid, "EDGE", "HIGH", "Bedside hub sounded a local alarm while offline",
@@ -152,6 +154,9 @@ class Engine:
             st["last_received_real"] = now_real
             st["device"] = {"id": dev, "battery": batch.get("battery"), "buffered": batch.get("buffered", 0),
                             "edge_offline_s": batch.get("offline_seconds", 0)}
+            if batch.get("equipment"):
+                st["equipment"] = batch["equipment"]
+                self._equipment_check(pid, batch["equipment"])
             if new_ts:
                 now = self.clock.now()
                 old = [t for t in new_ts if t < now - 15 * 60]
@@ -320,8 +325,10 @@ class Engine:
         else:
             st["calm_count"] = 0
 
+        level = {"STABLE": "LOW", "WATCH": "MEDIUM", "HIGH": "HIGH", "CRITICAL": "HIGH"}[tier]
         res = {
-            "tier": tier, "at": at, "why": why,
+            "tier": tier, "at": at, "why": why, "risk_level": level,
+            "risk_reason": self._short_reason(tier, s_last, last, fc, early, note_sig, note_red, ctx),
             "news2": s_last, "news2_rows": news2.explain_components(last, s_last), "news2_confirmed": confirmed,
             "latest": {k: last[k] for k in ("hr", "rr", "spo2", "sbp", "dbp", "temp", "weight")} | {"acvpu": acvpu, "ts": last["ts"]},
             "acvpu_source": acvpu_src,
@@ -344,6 +351,28 @@ class Engine:
             st["_s1"] = scale1_alarm
         self._alerting(pid, res, retro)
         return res
+
+    @staticmethod
+    def _short_reason(tier, s, last, fc, early, note_sig, note_red, ctx):
+        """One plain-English sentence: why Low / Medium / High."""
+        names = {"rr": "breathing {:.0f}/min", "spo2": "oxygen {:.0f}%", "sbp": "BP {:.0f}", "hr": "pulse {:.0f}",
+                 "temp": "temperature {:.1f}°C", "acvpu": "new confusion", "o2": "on oxygen"}
+        abn = [k for k, v in sorted(s["components"].items(), key=lambda kv: -kv[1]) if v > 0 and k != "o2"][:3]
+        parts = []
+        if tier in ("HIGH", "CRITICAL") and abn:
+            parts.append(f"NEWS2 {s['total']}: " + ", ".join(names[k].format(last[k]) if k != "acvpu" else names[k] for k in abn))
+        elif early and fc["factors"]:
+            f = [x["text"] for x in fc["factors"] if x["feature"] != "news2_now"][:2]
+            parts.append("Trending worse: " + "; ".join(f).lower() if f else "Trending worse")
+        elif abn:
+            parts.append("Mild changes: " + ", ".join(names[k].format(last[k]) if k != "acvpu" else names[k] for k in abn))
+        else:
+            parts.append("Vital signs within this patient's usual range")
+        if note_red:
+            parts.append("caregiver reports " + ", ".join(note_red).lower())
+        elif note_sig:
+            parts.append("caregiver notes mention " + ", ".join(note_sig[:3]).lower())
+        return "; ".join(parts) + "."
 
     # ------------------------------------------------------------------ alerts
     def _open(self, pid, kind):
@@ -492,14 +521,108 @@ class Engine:
                 self.assess(pid)
                 self.db.commit()
 
-    def check_in(self, pid: str, caregiver: str, on: bool) -> None:
+    def check_in(self, pid: str, caregiver: str, on: bool, method: str = "app") -> None:
+        """method 'bedside-tag' = caregiver scanned the QR/NFC tag fixed at the bedside (verified presence)."""
         with self.lock:
             if on:
-                self.on_duty[pid] = {"caregiver": caregiver, "since": self.clock.now()}
+                self.on_duty[pid] = {"caregiver": caregiver, "since": self.clock.now(), "verified": method == "bedside-tag",
+                                     "method": method, "last_seen": self.clock.now()}
             else:
                 self.on_duty.pop(pid, None)
-            self._audit(pid, f"{caregiver} {'checked in (on duty)' if on else 'checked out'}", caregiver)
+            how = " via bedside tag (verified presence)" if method == "bedside-tag" else ""
+            self._audit(pid, f"{caregiver} {'checked in' + how if on else 'checked out'}", caregiver)
             self.db.commit()
+
+    # ------------------------------------------------------------------ home IoT
+    def _iot_event(self, pid, e):
+        st = self.state[pid]
+        if e["kind"] == "PILLBOX_OPEN":
+            st["last_dose"] = {"ts": e["ts"], "med": e["detail"].get("med")}
+            cur = self._open(pid, "MEDICATION")
+            if cur:
+                self.db.execute("UPDATE alerts SET status='RESOLVED', resolved_by='system', resolved_real=?, action='dose taken',"
+                                " note='Pill box opened' WHERE id=?", (time.time(), cur["id"]))
+                self._audit(pid, f"Alert #{cur['id']} auto-resolved: pill box opened", alert_id=cur["id"])
+        elif e["kind"] == "ROOM_STILL":
+            bed = st.get("bed")
+            if bed and not bed["in_bed"]:
+                self._raise(pid, "FALL", "HIGH", "Possible fall: out of bed, no movement in the room",
+                            {"why": [f"Bed sensor: left bed at {time.strftime('%H:%M', time.localtime(bed['since']))}.",
+                                     "Room motion sensor: no movement for 10 min since then."],
+                             "recommendation": "Check on the patient now. If they are on the floor, don't lift alone; call 108 if injured, confused or not responding."},
+                            e["ts"])
+        elif e["kind"] == "BED_EXIT":
+            if st.get("bed", {}).get("since", 0) <= e["ts"]:
+                st["bed"] = {"in_bed": False, "since": e["ts"]}
+        elif e["kind"] == "BED_RETURN":
+            if st.get("bed", {}).get("since", 0) <= e["ts"]:
+                out_min = (e["ts"] - st.get("bed", {}).get("since", e["ts"])) / 60
+                st["bed"] = {"in_bed": True, "since": e["ts"]}
+                cur = self._open(pid, "FALL")
+                if cur:
+                    self.db.execute("UPDATE alerts SET status='RESOLVED', resolved_by='system', resolved_real=?, action='back in bed',"
+                                    " note=? WHERE id=?", (time.time(), f"Bed sensor: back in bed after {out_min:.0f} min", cur["id"]))
+                    self._audit(pid, f"Alert #{cur['id']} auto-resolved: patient back in bed", alert_id=cur["id"])
+
+    def _equipment_check(self, pid, eq):
+        now = self.clock.now()
+        conc = eq.get("concentrator")
+        if conc and not conc["running"]:
+            self._raise(pid, "EQUIPMENT", "HIGH", "Oxygen concentrator stopped" + (" - power cut" if eq.get("hub_power") == "battery" else ""),
+                        {"why": [f"Prescribed {conc['prescribed_lpm']} L/min oxygen; concentrator delivering 0 L/min.",
+                                 "Patient is oxygen-dependent (COPD)."],
+                         "recommendation": "Switch to the backup oxygen cylinder now and keep the patient sitting up. Call the care desk if breathless."}, now)
+        elif conc and conc["purity_pct"] < 85:
+            self._raise(pid, "EQUIPMENT", "WATCH", f"Oxygen concentrator output low ({conc['purity_pct']:.0f}% O₂)",
+                        {"why": [f"Concentrator purity {conc['purity_pct']:.0f}% (normal ≥ 90%)."],
+                         "recommendation": "Check / clean the filter, then call the equipment vendor. Use the backup cylinder if SpO₂ drops."}, now)
+        else:
+            self._clear(pid, "EQUIPMENT", auto_resolve_after_min=5, ts=now)
+        if eq.get("hub_power") == "battery" and eq.get("hub_battery", 100) < 30:
+            self._raise(pid, "POWER", "WATCH", f"Power cut: bedside hub battery {eq['hub_battery']:.0f}%",
+                        {"why": ["Mains power is off; monitoring continues on the hub's battery."],
+                         "recommendation": "Plug the hub into a power bank / inverter to keep monitoring running."}, now)
+        elif eq.get("hub_power") == "mains":
+            self._clear(pid, "POWER", auto_resolve_after_min=0, ts=now)
+
+    def _dose_check(self, pid, now):
+        prof = self.profile(pid)
+        st = self.state[pid]
+        due_list = []
+        day0 = now - (now - time.timezone) % 86400
+        for d in (day0 - 86400, day0):
+            for dose in prof.schedule:
+                due_list.append((d + dose["hour"] * 3600, dose["med"]))
+        past = [x for x in due_list if x[0] <= now]
+        future = [x for x in due_list if x[0] > now] + [(t + 86400, m) for t, m in due_list]
+        nxt = min(future) if future else None
+        st["next_dose"] = {"ts": nxt[0], "med": nxt[1]} if nxt else None
+        if not past:
+            return
+        due, med = max(past)
+        if now - due < 60 * 60 or now - due > 10 * 3600:
+            return
+        taken = self.db.execute("SELECT 1 FROM edge_events WHERE patient_id=? AND kind='PILLBOX_OPEN' AND ts>=? LIMIT 1",
+                                (pid, due - 30 * 60)).fetchone()
+        st["dose_missed"] = None if taken else {"due": due, "med": med}
+        if not taken and st.get("_dose_alerted") != due:
+            st["_dose_alerted"] = due
+            self._raise(pid, "MEDICATION", "WATCH", f"Dose not taken: {med}",
+                        {"why": [f"Smart pill box not opened since the {time.strftime('%H:%M', time.localtime(due))} dose was due."]
+                         + (["For heart failure, a missed water tablet can lead to fluid build-up within 1-2 days."] if "Furosemide" in med else []),
+                         "recommendation": "Remind the patient / give the dose if it is still appropriate, or ask the care desk."}, now)
+
+    def _fall_check(self, pid, now):
+        bed = self.state[pid].get("bed")
+        if not bed or bed["in_bed"]:
+            return
+        hour = time.localtime(bed["since"]).tm_hour
+        out_min = (now - bed["since"]) / 60
+        if (hour >= 22 or hour < 6) and out_min >= 20:
+            self._raise(pid, "FALL", "HIGH", f"Out of bed {out_min:.0f} min at night - possible fall",
+                        {"why": [f"Bed sensor: left bed at {time.strftime('%H:%M', time.localtime(bed['since']))} and has not returned.",
+                                 "Normal night-time toilet trips in this home last 4-12 min."],
+                         "recommendation": "Check on the patient now. If they are on the floor, don't lift alone; call 108 if injured, confused or not responding."}, now)
 
     # ------------------------------------------------------------------ watchdog
     def tick(self) -> None:
@@ -545,6 +668,9 @@ class Engine:
                                         " action='data resumed', note='Hub reconnected and buffered readings were synced' WHERE id=?",
                                         (now_r, cur["id"]))
                         self._audit(pid, f"Alert #{cur['id']} auto-resolved: data resumed", alert_id=cur["id"])
+                if st.get("data_state") in ("LIVE", "STALE"):
+                    self._dose_check(pid, now)
+                    self._fall_check(pid, now)
                 # scheduled caregiver rounds
                 lr = self.db.execute("SELECT MAX(ts) FROM rounds WHERE patient_id=?", (pid,)).fetchone()[0]
                 start = self.round_started.setdefault(pid, now)
@@ -585,7 +711,7 @@ class Engine:
 
     def history(self, pid: str, hours: float = 48) -> dict:
         now = self.clock.now()
-        rows = self.db.execute("SELECT ts, hr, rr, spo2, sbp, dbp, temp, weight, artifact, late FROM readings WHERE patient_id=? AND ts>=? ORDER BY ts",
+        rows = self.db.execute("SELECT ts, hr, rr, spo2, sbp, dbp, temp, weight, artifact, late, source FROM readings WHERE patient_id=? AND ts>=? ORDER BY ts",
                                (pid, now - hours * 3600)).fetchall()
         trail = sorted((x for x in self.trail[pid] if x["at"] >= now - hours * 3600), key=lambda x: x["at"])
         return {"readings": [dict(r) for r in rows], "trail": trail}

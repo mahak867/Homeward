@@ -1,0 +1,7 @@
+# One-click public demo on Render (free tier): New -> Blueprint -> select this repo.
+services:
+  - type: web
+    name: homeward
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health

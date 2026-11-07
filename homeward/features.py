@@ -96,7 +96,7 @@ def describe(feature: str, ctx: dict) -> str:
         v = feature.split("_", 1)[1]
         s = ctx["slopes6" if hrs == 6 else "slopes12"][v]
         total = s * hrs
-        fmt = "{:+.1f}" if v in ("temp",) else "{:+.0f}"
+        fmt = "{:+.1f}" if v in ("temp", "spo2") else "{:+.0f}"
         trend = "rising" if total > 0 else "falling"
         return f"{NAMES[v]} {trend} {fmt.format(total)} {UNITS[v]} over the last {hrs} h"
     if feature == "weight_delta":

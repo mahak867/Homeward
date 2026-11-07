@@ -1,26 +1,34 @@
-# 3-minute demo video: shot list and voice-over
+# 3-minute demo video
 
-Record at 1440×900 or larger. Before you record, run the flow once to rehearse, then restart for a clean take.
+The easiest way to record is the built-in **▶ Guided demo**. It drives the live system through the full story (Sensor → Platform → AI Risk → Alert → Caregiver Response → Resilience) with on-screen captions, in about 2 min 50 s.
 
-```bash
-python run.py
-```
+## Recording steps
 
-Open the dashboard in one browser window. Open `/caregiver?lang=hi` in a narrow second window (or phone emulation in DevTools). Turn on **🔈 Sound**.
+1. Start the app with `python run.py`. Each start gives a clean demo.
+2. Open http://127.0.0.1:8000 in a browser window about 1600 × 1000 or larger. Optionally put `/caregiver?lang=hi` in a phone-sized window next to it.
+3. Start a screen recorder (OBS, Loom, Windows Game Bar, or QuickTime on macOS).
+4. Click **▶ Guided demo** (or open `http://127.0.0.1:8000/?tour=1`) and read the captions aloud as voice-over. **Pause** and **Next** are on the caption card.
 
-| Time | On screen | Say |
-|---|---|---|
-| **0:00–0:15** | Dashboard, three homes, all "Stable". | "This is HomeWard, by team Smart Health: a hospital ward that fits inside a bedroom. Three patients are at home, each with a bedside hub streaming vitals. Everything here is synthetic." |
-| **0:15–0:35** | Click **Rajesh Iyer** (COPD). Point at SpO₂ 89–90% and the "NEWS2 SpO₂ scale 2" chip. | "Rajesh has COPD and his doctor's target is 88 to 92 percent. A normal monitor would alarm all day. We score him on NEWS2 Scale 2, the hospital standard for exactly this case. Every reading is also compared with his *own* baseline from his first 24 hours at home." |
-| **0:35–1:05** | Click **Kamla Devi** → Demo simulator: *Infection / sepsis-like* → **Start deterioration**. Set speed **30 min/s**. Watch the AI-risk line climb; the *Early warning* alert appears while NEWS2 is still low. | "Kamla was discharged after pneumonia. I start a slow infection. NEWS2 still says she's fine, but our AI sees breathing, pulse and temperature drifting from *her* normal. Here's an early warning, hours before a standard score would trigger. And here's exactly why, in plain language. Every bar is the model's real maths, not a guess." |
-| **1:05–1:25** | Caregiver phone (Hindi). Type or use the mic: *"Maa ji ko thand lag rahi hai, khana nahi khaya"* → Send. Show "We understood: Fever/chills, Poor eating". | "Sunita, her daughter-in-law, gets the alert on her phone in Hindi. She adds what she sees in her own words. HomeWard understands Hindi and Hinglish, including negations like 'bukhar nahi hai'." |
-| **1:25–1:50** | Back on the dashboard: NEWS2 crosses 5 then 7. The CRITICAL alert shows the escalation ladder counting down and the parallel care-desk notification. Let it escalate to L2. Then **Acknowledge** and **Resolve…** → "Called doctor / tele-consult". | "Now it's urgent. A critical alert goes to Sunita and to our tele-nurse desk at the same time. If nobody acknowledges, it escalates on a timer to the next person, and every step is audited." |
-| **1:50–2:05** | **📞 Call clinician (SBAR)** modal. | "One click gives a structured SBAR handover, so the doctor gets the full picture in 30 seconds." |
-| **2:05–2:45** | Open **🧪 Resilience Lab**. Toggle **Internet outage** for ~10 s: cards turn *offline*, buffers grow, then "🔔 local alarm" appears. Turn it off and watch the buffers drain and the "[During connectivity gap]" / local-alarm alerts sync. Toggle **AI service crash**: risk source shows "rule-based fallback". On Rajesh, click **Displace finger sensor**: SpO₂ drops to the 70s, marked ✕, and only a "check the sensor" note appears. | "Homes lose internet. Here the hub keeps recording, and because Kamla is critical it sounds an alarm in the room itself. When the internet returns, everything replays in order and nothing is lost. If our AI crashes, a circuit breaker switches to transparent rules, and NEWS2 never stops. A loose finger probe isn't treated as an emergency: we tell the family to fix the sensor. These counters show every failure the system absorbed." |
-| **2:45–3:00** | Model-card panel in the lab, then the README test badge or a terminal running `pytest -q`. | "On held-out synthetic patients we warn a median of 10 hours earlier than NEWS2 alone, with less than half the false alarms. Sudden events can't be forecast, and we say so. 21 automated tests cover these safety claims. HomeWard: sense, understand, predict, alert, respond, even when things break." |
+## Story and voice-over (follows the caption cards)
 
-**Tips**
+| # | Stage | What happens on screen | Say (short version) |
+|---|---|---|---|
+| 1 | Sense | Ward of 3 homes with live hubs | "HomeWard turns a bedroom into a ward: a bedside hub streams vitals plus pill-box, bed, motion and oxygen-equipment data." |
+| 2 | Understand | Rajesh (COPD), SpO₂ 89% with "usual 90" | "Normal is personal. NEWS2 Scale 2 and a 24-hour personal baseline mean no false alarms for his prescribed target." |
+| 3 | Predict | Kamla's infection starts; the purple risk line climbs | "A slow infection begins. The AI risk rises while NEWS2 is still flat." |
+| 4 | Predict | Early-warning panel with factors | "Early warning with exact reasons, a median of 10 hours earlier than NEWS2 alone on held-out test patients." |
+| 5 | Respond | Hindi/Hinglish note understood | "Her daughter-in-law writes in Hinglish; HomeWard understands it, including 'nahi'." |
+| 6 | Alert | NEWS2 crosses the urgent threshold; risk becomes HIGH with a reason | "Now it's High risk, confirmed on two readings." |
+| 7 | Respond | Escalation ladder and countdown | "Caregiver first, care desk in parallel for critical, then family and ambulance on a timer." |
+| 8 | Respond | Acknowledge + SBAR handover | "Acknowledged, and the doctor gets an SBAR summary." |
+| 9–10 | Resilience | Internet outage → in-room alarm → replay | "Offline? The hub alarms in the room and loses nothing." |
+| 11 | Resilience | Power cut → oxygen concentrator alert | "Power cut? Monitoring continues on battery, and the oxygen machine is watched too." |
+| 12 | Resilience | AI crash → rule fallback | "Even the AI can fail safely." |
+| 13 | Sense | Fall: bed + motion sensors | "Out of bed and no movement for 10 minutes: possible fall." |
+| 14 | Sense | Devices panel | "And it works with a ₹1,000 ESP32 sensor kit too: no hardware needed, but ready for it." |
+| 15 | Wrap | Validation bars | "Earlier warnings, fewer false alarms, and it keeps working when things break. That's HomeWard." |
 
-- If an early warning takes too long, press **30 min/s**. If too much happens at once, press **Pause**.
-- `python scripts/fast_forward.py 36` prints the exact alert timeline in seconds, so you know what to expect.
-- Keep the disclaimer bar visible in at least one shot.
+Tips:
+- If you want a longer pause on any card, press **Pause**.
+- `python scripts/fast_forward.py 36` prints the expected alert timeline in seconds.
+- To show the phone app, open it in a second window during steps 5–8. Alerts appear there in Hindi with big "I'm with the patient" buttons.

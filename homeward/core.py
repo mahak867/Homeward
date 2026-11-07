@@ -50,13 +50,14 @@ class SimClock:
 class Chaos:
     """Fault-injection switches used by the Resilience Lab panel and the tests."""
 
-    FLAGS = ("network_down", "duplicate_storm", "out_of_order", "ml_down")
+    FLAGS = ("network_down", "duplicate_storm", "out_of_order", "ml_down", "power_cut")
 
     def __init__(self):
         self.network_down = False
         self.duplicate_storm = False
         self.out_of_order = False
         self.ml_down = False
+        self.power_cut = False
         self.dead_devices: set[str] = set()
 
     def as_dict(self) -> dict:

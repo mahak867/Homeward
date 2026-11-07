@@ -48,18 +48,106 @@ class EdgeHub:
         self.prev_good = None
         self.next_sample_ts = None
         self.stats = {"sent": 0, "failed_attempts": 0, "max_buffer": 0, "local_alarms": 0}
+        # extra home IoT: smart pill box + under-mattress bed-occupancy sensor
+        self.iot_rng = random.Random(seed * 7919 + 1)
+        self.last_iot_ts: float | None = None
+        self.pending_opens: list[tuple[float, str]] = []
+        self.skip_next_dose = False
+        self.in_bed = True
+        self.return_at: float | None = None
+        self.fall_pending = False
+        self.fallen_since: float | None = None
+        self.o2_fault = False  # concentrator output purity drops (clogged filter / sieve failure)  # room PIR motion sensor sees no movement after a fall
+        # real hardware (ESP32 + MAX30102 + temp probe) can override simulated channels
+        self.hw: dict | None = None
         self._stop = threading.Event()
 
     # ------------------------------------------------------------ sensing
+    def _event(self, ts: float, kind: str, detail: dict) -> None:
+        with self.lock:
+            self.seq += 1
+            ev = {"eid": f"e{self.seq}", "ts": ts, "kind": kind, "detail": detail}
+            self.db.execute("INSERT INTO outbox(seq, kind, ts, body) VALUES(?,?,?,?)", (self.seq, "event", ts, json.dumps(ev)))
+            self.db.commit()
+
+    def _iot(self, ts: float) -> None:
+        """Smart pill box (opened = dose taken) and bed sensor (exits/returns at night)."""
+        prev = self.last_iot_ts if self.last_iot_ts is not None else ts - SAMPLE_MINUTES * 60
+        self.last_iot_ts = ts
+        day0 = ts - (ts - time.timezone) % 86400  # local midnight
+        for d in (day0 - 86400, day0):
+            for dose in self.p.schedule:
+                due = d + dose["hour"] * 3600
+                if prev < due <= ts:
+                    if self.skip_next_dose:
+                        self.skip_next_dose = False
+                    elif self.iot_rng.random() < self.p.adherence:
+                        self.pending_opens.append((due + self.iot_rng.uniform(2, 35) * 60, dose["med"]))
+        for t_open, med in [x for x in self.pending_opens if x[0] <= ts]:
+            self.pending_opens.remove((t_open, med))
+            self._event(t_open, "PILLBOX_OPEN", {"med": med})
+        hour = time.localtime(ts).tm_hour
+        night = hour >= 22 or hour < 6
+        if self.in_bed and (self.fall_pending or (night and self.iot_rng.random() < 0.03)):
+            self.in_bed = False
+            self.return_at = None if self.fall_pending else ts + self.iot_rng.uniform(4, 12) * 60
+            if self.fall_pending:
+                self.fallen_since = ts
+            self.fall_pending = False
+            self._event(ts, "BED_EXIT", {"night": night})
+        elif not self.in_bed and self.return_at is not None and ts >= self.return_at:
+            self.in_bed, self.return_at, self.fallen_since = True, None, None
+            self._event(ts, "BED_RETURN", {})
+        if self.fallen_since is not None and ts - self.fallen_since >= 10 * 60:
+            self._event(ts, "ROOM_STILL", {"minutes": 10, "since": self.fallen_since})
+            self.fallen_since = None  # report once
+
+    def equipment(self) -> dict:
+        """Medical-equipment + hub power telemetry sent with every upload."""
+        eq = {"hub_power": "battery" if self.chaos.power_cut else "mains", "hub_battery": round(self.battery, 1)}
+        if self.p.on_oxygen:
+            running = not self.chaos.power_cut
+            purity = (78 if self.o2_fault else 93) + self.iot_rng.uniform(-1, 1) if running else 0
+            eq["concentrator"] = {"running": running, "flow_lpm": 2.0 if running else 0.0,
+                                  "prescribed_lpm": 2.0, "purity_pct": round(purity, 1)}
+        return eq
+
+    def hw_update(self, values: dict) -> None:
+        self.hw = {"values": values, "real": time.time()}
+
+    def hw_connected(self) -> bool:
+        return self.hw is not None and time.time() - self.hw["real"] < 30
+
+    def simulate_fall(self) -> None:
+        self.fall_pending = True
+
+    def help_back_to_bed(self) -> None:
+        if not self.in_bed:
+            self.return_at = self.clock.now()
+
     def record(self, ts: float) -> dict:
+        self._iot(ts)
         r = self.phys.sample(ts)
+        if self.hw_connected():
+            hw = self.hw["values"]
+            for k in ("hr", "spo2", "temp"):
+                if hw.get(k) is not None:
+                    r[k] = round(float(hw[k]), 1) if k == "temp" else int(round(float(hw[k])))
+            if not hw.get("finger", True):  # finger removed from the real probe -> bad signal
+                r["sqi"], r["motion"] = 0.1, 0.5
+            elif hw.get("sqi") is not None:
+                r["sqi"] = float(hw["sqi"])
+            r["source"] = "sensor"
         with self.lock:
             self.seq += 1
             r.update({"seq": self.seq, "ts": ts})
             self.db.execute("INSERT INTO outbox(seq, kind, ts, body) VALUES(?,?,?,?)", (self.seq, "reading", ts, json.dumps(r)))
             self.db.commit()
         self._local_check(r)
-        self.battery = max(0.0, self.battery - 0.002)
+        if self.chaos.power_cut:  # mains off: hub runs on its internal battery
+            self.battery = max(0.0, self.battery - 0.35)
+        else:
+            self.battery = min(100.0, self.battery + 0.5)
         return r
 
     def _local_check(self, r):
@@ -111,6 +199,7 @@ class EdgeHub:
             events = [json.loads(b) for _, k, b in rows if k == "event"]
             batch = {"device_id": self.device_id, "patient_id": self.p.patient_id, "readings": readings,
                      "events": events, "battery": round(self.battery, 1), "buffered": len(rows),
+                     "equipment": self.equipment(),
                      "offline_seconds": round(time.time() - self.offline_since) if self.offline_since else 0}
             try:
                 if self.chaos.network_down:
@@ -173,4 +262,6 @@ class EdgeHub:
                 "battery": round(self.battery, 1), "local_alarm": self.local_alarm_active,
                 "dead": self.p.patient_id in self.chaos.dead_devices,
                 "scenario": self.phys.scenario.label if self.phys.scenario else None,
-                "progress": round(self.phys.progress(self.clock.now()), 2), **self.stats}
+                "progress": round(self.phys.progress(self.clock.now()), 2),
+                "in_bed": self.in_bed, "real_sensor": self.hw_connected(), "equipment": self.equipment(),
+                "real_sensor_values": self.hw["values"] if self.hw_connected() else None, **self.stats}
