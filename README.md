@@ -30,7 +30,7 @@ Sign in as **Nurse Asha · PIN 1234** (care desk), then press **▶ Guided demo*
 
 ![HomeWard dashboard](docs/screenshots/dashboard.png)
 
-🎬 **Demo video:** [docs/demo/HomeWard-demo-video.mp4](docs/demo/HomeWard-demo-video.mp4) (2:40)
+🎬 **Demo video:** [docs/demo/HomeWard-demo-video-voiceover.mp4](docs/demo/HomeWard-demo-video-voiceover.mp4) (2:40, with voice-over)
 
 ## Run it in 60 seconds
 
