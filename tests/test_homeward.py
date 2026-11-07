@@ -14,7 +14,11 @@ from homeward.engine import Engine
 from homeward.physiology import DEMO_PATIENTS
 from homeward.server import create_app
 
-KEY = {"X-Device-Key": "demo-device-key-change-me"}
+from homeward.core import device_key
+
+
+def KEY(pid="P-101"):
+    return {"X-Device-Key": device_key(f"HUB-{pid}")}
 
 
 # ----------------------------------------------------------------- fixtures
@@ -109,7 +113,7 @@ def test_ingest_requires_device_key(world):
     client = world[3]
     r = client.post("/api/ingest", json={"device_id": "HUB-P-101", "patient_id": "P-101", "readings": []})
     assert r.status_code == 401
-    r = client.post("/api/ingest", headers=KEY, json={"device_id": "HUB-P-102", "patient_id": "P-101", "readings": []})
+    r = client.post("/api/ingest", headers=KEY("P-101"), json={"device_id": "HUB-P-102", "patient_id": "P-101", "readings": []})
     assert r.status_code == 403
 
 
@@ -253,7 +257,7 @@ def test_real_sensor_feeds_pipeline_drives_buzzer_and_button_acks(world):
     clock, chaos, eng, client, hubs = world
     bad = {"hr": 128, "spo2": 88, "temp": 39.3, "finger": True, "sqi": 0.9, "firmware": "test"}
     for _ in range(4):
-        r = client.post("/api/devices/P-101/sensor", json=bad, headers=KEY)
+        r = client.post("/api/devices/P-101/sensor", json=bad, headers=KEY("P-101"))
         assert r.status_code == 200
         run(world, 1 / 12)
     last = eng.db.execute("SELECT hr, spo2, temp, source FROM readings WHERE patient_id='P-101' ORDER BY ts DESC LIMIT 1").fetchone()
@@ -261,7 +265,7 @@ def test_real_sensor_feeds_pipeline_drives_buzzer_and_button_acks(world):
     assert eng.state["P-101"]["news2"]["total"] >= 7             # 3 (SpO2) + 2 (HR) + 2 (temp)
     cmd = client.get("/api/devices/P-101/command").json()
     assert cmd["alarm"] in ("fast", "slow") and cmd["led"] == "red"
-    r = client.post("/api/devices/P-101/sensor", json={**bad, "button": True}, headers=KEY).json()
+    r = client.post("/api/devices/P-101/sensor", json={**bad, "button": True}, headers=KEY("P-101")).json()
     assert r["acknowledged"]                                     # bedside button acknowledged the alert
     assert all(a["status"] != "OPEN" for a in eng.alerts(0) if a["patient_id"] == "P-101" and a["id"] in r["acknowledged"])
     assert client.post("/api/devices/P-101/sensor", json=bad).status_code == 401
@@ -269,7 +273,7 @@ def test_real_sensor_feeds_pipeline_drives_buzzer_and_button_acks(world):
 
 def test_finger_off_real_sensor_is_artifact_not_alarm(world):
     clock, chaos, eng, client, hubs = world
-    client.post("/api/devices/P-102/sensor", json={"finger": False, "spo2": 70, "hr": 40}, headers=KEY)
+    client.post("/api/devices/P-102/sensor", json={"finger": False, "spo2": 70, "hr": 40}, headers=KEY("P-102"))
     run(world, 0.25)
     assert eng.db.execute("SELECT artifact FROM readings WHERE patient_id='P-102' ORDER BY ts DESC LIMIT 1").fetchone()[0] == 1
     assert not any(a["kind"] == "VITALS" and a["patient_id"] == "P-102" for a in eng.alerts(0))
@@ -401,3 +405,33 @@ def test_logout_invalidates_session(world):
     assert client.get("/api/me", headers=h).status_code == 200
     client.post("/api/logout", headers=h)
     assert client.get("/api/me", headers=h).status_code == 401
+
+
+
+# ----------------------------------------------------------------- device identity + review fixes
+def test_device_key_is_per_patient(world):
+    clock, chaos, eng, client, hubs = world
+    # Kamla's hub key cannot post for, or press the button of, Rajesh's home
+    r = client.post("/api/devices/P-102/sensor", json={"finger": True, "button": True}, headers=KEY("P-101"))
+    assert r.status_code == 401
+    r = client.post("/api/ingest", headers=KEY("P-101"), json={"device_id": "HUB-P-102", "patient_id": "P-102", "readings": []})
+    assert r.status_code == 401
+    assert client.post("/api/devices/P-102/sensor", json={"finger": True}, headers=KEY("P-102")).status_code == 200
+
+
+def test_device_command_requires_device_key_or_permitted_session(world):
+    clock, chaos, eng, client, hubs = world
+    anon = TestClient(client.app)
+    assert anon.get("/api/devices/P-101/command").status_code == 401
+    assert anon.get("/api/devices/P-101/command", headers=KEY("P-101")).status_code == 200
+    h = _family(client, "meena", "2222")
+    assert client.get("/api/devices/P-101/command", headers=h).status_code == 403
+    assert client.get("/api/devices/P-102/command", headers=h).status_code == 200
+
+
+def test_unknown_usernames_are_not_tracked(world):
+    clock, chaos, eng, client, hubs = world
+    auth = client.app.state.auth
+    for i in range(50):
+        client.post("/api/login", json={"user": f"ghost{i}", "pin": "0000"})
+    assert not any(k.startswith("ghost") for k in auth.fails)

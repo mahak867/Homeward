@@ -64,14 +64,29 @@ class Chaos:
         return {f: getattr(self, f) for f in self.FLAGS} | {"dead_devices": sorted(self.dead_devices)}
 
 
-DEVICE_KEY = os.environ.get("HOMEWARD_DEVICE_KEY", "demo-device-key-change-me")
+DEVICE_KEY = os.environ.get("HOMEWARD_DEVICE_KEY", "demo-device-key-change-me")  # master secret (server side)
+
+
+def device_key(device_id: str, master: str | None = None) -> str:
+    """Per-device key = HMAC(master, device_id). Each hub / sensor board holds only its own key,
+    so a device can never post data for (or acknowledge alerts of) another patient.
+    Print one with:  python -m homeward.core HUB-P-101"""
+    import hashlib
+    import hmac
+    return hmac.new((master or DEVICE_KEY).encode(), device_id.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+if __name__ == "__main__":
+    import sys
+    for d in sys.argv[1:] or ["HUB-P-101", "HUB-P-102", "HUB-P-103"]:
+        print(d, device_key(d))
 
 # Escalation timers are in REAL seconds so a human presenter can react during the demo.
 ESCALATE_AFTER_S = {
-    "CRITICAL": float(os.environ.get("HOMEWARD_ESC_CRITICAL", 25)),
-    "HIGH": float(os.environ.get("HOMEWARD_ESC_HIGH", 45)),
-    "WATCH": float(os.environ.get("HOMEWARD_ESC_WATCH", 90)),
-    "LOW": float(os.environ.get("HOMEWARD_ESC_LOW", 180)),
+    "CRITICAL": float(os.environ.get("HOMEWARD_ESC_CRITICAL", "25")),
+    "HIGH": float(os.environ.get("HOMEWARD_ESC_HIGH", "45")),
+    "WATCH": float(os.environ.get("HOMEWARD_ESC_WATCH", "90")),
+    "LOW": float(os.environ.get("HOMEWARD_ESC_LOW", "180")),
 }
 MAX_LEVEL = {"CRITICAL": 4, "HIGH": 3, "WATCH": 2, "LOW": 1}
 SEV_RANK = {"LOW": 0, "WATCH": 1, "HIGH": 2, "CRITICAL": 3}

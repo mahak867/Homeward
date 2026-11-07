@@ -5,7 +5,6 @@
 Useful to verify the story before recording the demo video.
 """
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -35,7 +34,7 @@ hubs["P-101"].phys.start_scenario("sepsis", t0)
 hubs["P-103"].phys.start_scenario("hf_decompensation", t0)
 seen = set()
 last_tier = {}
-for step in range(int(HOURS * 12)):
+for _ in range(int(HOURS * 12)):
     clock.advance(300)
     for h in hubs.values():
         h.step()

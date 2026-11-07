@@ -40,7 +40,7 @@ const char* WIFI_SSID   = "YOUR_WIFI";
 const char* WIFI_PASS   = "YOUR_PASSWORD";
 const char* SERVER      = "http://192.168.1.50:8000";   // laptop running `python run.py --host 0.0.0.0`
 const char* PATIENT_ID  = "P-101";
-const char* DEVICE_KEY  = "demo-device-key-change-me";
+const char* DEVICE_KEY  = "54d70ef3b87da2222177a434d28ffcd5";  // this board's own key: `python -m homeward.core HUB-P-101`
 const char* FIRMWARE    = "homeward-esp32 1.0";
 
 // ---------------- pins ----------------

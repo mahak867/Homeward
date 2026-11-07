@@ -57,10 +57,12 @@ class Auth:
     def login(self, user_id: str, pin: str) -> tuple[str | None, str]:
         with self.lock:
             u = self.users.get(user_id)
+            if not u:
+                return None, "Wrong name or PIN."  # unknown ids aren't tracked (no unbounded growth)
             f = self.fails.setdefault(user_id, [0, 0.0])
             if f[1] > time.time():
                 return None, f"Too many attempts. Try again in {int(f[1] - time.time()) + 1} s."
-            if not u or not hmac.compare_digest(_hash(pin, u["salt"]), u["hash"]):
+            if not hmac.compare_digest(_hash(pin, u["salt"]), u["hash"]):
                 f[0] += 1
                 if f[0] >= MAX_FAILS:
                     f[0], f[1] = 0, time.time() + LOCK_S

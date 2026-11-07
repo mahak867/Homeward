@@ -137,7 +137,7 @@ def pred():
 
 
 def test_model_coefficients_respect_clinical_signs(pred):
-    assert all(c * s >= 0 for c, s in zip(pred.coef, SIGNS))
+    assert all(c * s >= 0 for c, s in zip(pred.coef, SIGNS, strict=True))
 
 
 def test_model_threshold_and_metrics_present(pred):
@@ -181,7 +181,8 @@ def test_rule_fallback_flags_adverse_trends():
 
 def test_circuit_breaker_open_halfopen_close():
     cb = CircuitBreaker(fail_threshold=2, cooldown_s=0.05)
-    boom = lambda: (_ for _ in ()).throw(RuntimeError("down"))
+    def boom():
+        raise RuntimeError("down")
     assert cb.call(boom, lambda: "fb") == "fb" and cb.state == "closed"
     assert cb.call(boom, lambda: "fb") == "fb" and cb.state == "open"
     assert cb.call(lambda: "ml", lambda: "fb") == "fb"            # open: model not even called

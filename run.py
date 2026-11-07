@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent
 def main():
     ap = argparse.ArgumentParser(description="Smart Health HomeWard")
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8000")))
     ap.add_argument("--speed", type=float, default=300, help="simulated seconds per real second (300 = 5 min/s)")
     ap.add_argument("--autopilot", action="store_true", help="start the demo deteriorations automatically")
     a = ap.parse_args()

@@ -127,6 +127,7 @@ The two systems are complementary. NEWS2 catches the sudden events, and the AI a
 
 - **Role-based access** (`homeward/auth.py`): the care desk sees every home; a family member or home carer sees only their own patient (state, alerts, notifications, notes, audit). Other patients return 403, and the attempt is audited. Demo/lab controls are care-desk only.
 - PINs are stored as salted PBKDF2 hashes. Sessions are random 256-bit tokens held server-side with a 12 h expiry. Logout destroys the session. Five wrong PINs lock the account for 60 s. The browser uses an HttpOnly, SameSite=Strict cookie, and the phone app a bearer token.
+- **Per-device keys:** each hub / sensor board holds its own key (HMAC of its device id with a server secret). One home's device can never post readings for, or acknowledge alerts of, another patient. Device keys are compared in constant time. The buzzer command endpoint also needs a device key or a permitted login.
 - The acting user is always taken from the session, never the request body, so the audit trail can't be forged. Opening a record is audited once per session.
 
 - Demo patients are fictional; no real personal data is used or stored.
@@ -154,7 +155,7 @@ BLE BP cuff and smart scale via a Raspberry Pi gateway; FHIR export to hospital 
 | Suite | What it covers | How to run |
 |---|---|---|
 | `tests/test_units.py` (107) | Every NEWS2 threshold boundary (RCP 2017), Scale 2 on air vs oxygen, bands; notes in 5 languages incl. negation and red flags; quality gate; model sign constraints, exact explanations, monotonic risk; circuit breaker states; feature maths; PIN hashing and session expiry | `pytest -q` |
-| `tests/test_homeward.py` (34) | Full pipeline through real HTTP: duplicate storms, late data, outages + in-room alarm, dead hub, AI crash, artifacts, escalation ladder, early warning before NEWS2, IoT (pill box, fall, O₂ machine, power cut), hardware endpoints, Low/Medium/High reasons, verified attendance, role-based access | `pytest -q` |
+| `tests/test_homeward.py` (37) | Per-device keys, device command auth,  Full pipeline through real HTTP: duplicate storms, late data, outages + in-room alarm, dead hub, AI crash, artifacts, escalation ladder, early warning before NEWS2, IoT (pill box, fall, O₂ machine, power cut), hardware endpoints, Low/Medium/High reasons, verified attendance, role-based access | `pytest -q` |
 | `tests/e2e/browser.e2e.cjs` (22 checks) | Real Chromium on the real app: login and roles, dashboard rendering, Tamil note, early warning in the UI, acknowledge, SBAR, Resilience Lab outage/recovery, AI fallback, dark mode, guided demo, scoped family view, Hindi phone app, mobile layout, zero JS errors | `node tests/e2e/browser.e2e.cjs` (also via pytest) |
 
 GitHub Actions (`.github/workflows/ci.yml`) runs all three suites on every push.

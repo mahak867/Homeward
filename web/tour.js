@@ -169,7 +169,10 @@
     if (my === token) go(i + 1);
   }
   function start() { running = true; paused = false; t0tour = Date.now(); window.__tourLog = []; go(0); }
-  function stop() { token++; running = false; spot(null); el.classList.add("hidden"); hideSlide(); hidePhone(); i = -1; HW.closeModal(); window.__tourDone = true; }
+  function stop() {
+    const s = i >= 0 ? steps[i] : null;
+    if (s && s.after) { try { s.after(); } catch {} }  // never leave a fault switched on
+    token++; running = false; spot(null); el.classList.add("hidden"); hideSlide(); hidePhone(); i = -1; HW.closeModal(); window.__tourDone = true; }
   document.getElementById("tourBtn").onclick = () => (running ? stop() : start());
   slideEl.onclick = () => running && go(i + 1);
   document.addEventListener("keydown", (e) => { if (!running) return; if (e.key === "Escape") stop(); else if (e.key === "ArrowRight") go(i + 1); });

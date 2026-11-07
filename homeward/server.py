@@ -6,16 +6,17 @@ import time
 from pathlib import Path
 
 import asyncio
+import hmac
 import json
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .auth import Auth
-from .core import DEVICE_KEY, SEV_RANK
+from .core import SEV_RANK, device_key
 from .engine import Engine
 from .physiology import SCENARIOS
 
@@ -43,7 +44,7 @@ class Batch(BaseModel):
     device_id: str
     patient_id: str
     readings: list[Reading] = Field(default_factory=list, max_length=2000)
-    events: list[dict] = Field(default_factory=list)
+    events: list[dict] = Field(default_factory=list, max_length=2000)
     battery: float | None = None
     buffered: int = 0
     offline_seconds: float = 0
@@ -88,7 +89,7 @@ class SimIn(BaseModel):
     fall: bool = False
     skip_dose: bool = False
     back_to_bed: bool = False
-    speed: float | None = None
+    speed: float | None = Field(default=None, ge=1, le=3600)  # bounded: huge speeds would flood the hubs
     paused: bool | None = None
     patient_id: str | None = None
     scenario: str | None = None
@@ -117,6 +118,10 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
     app = FastAPI(title="Smart Health HomeWard", version="1.0",
                   description="HomeWard home-ward monitoring platform API (prototype decision support).")
     hubs = hubs if hubs is not None else {}
+
+    def device_ok(key: str, pid: str) -> bool:
+        """The key must be the one issued to THIS patient's hub (HMAC of the device id)."""
+        return hmac.compare_digest(key.encode(), device_key(f"HUB-{pid}").encode())
     auth = Auth()
     app.state.engine, app.state.hubs, app.state.auth = engine, hubs, auth
 
@@ -185,10 +190,10 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
     # ------------------------------------------------------------ device API
     @app.post("/api/ingest")
     def ingest(batch: Batch, x_device_key: str = Header(default="")):
-        if x_device_key != DEVICE_KEY:
-            raise HTTPException(401, "invalid device key")
         if batch.patient_id not in engine.patients or batch.device_id != f"HUB-{batch.patient_id}":
             raise HTTPException(403, "device not registered to this patient")
+        if not device_ok(x_device_key, batch.patient_id):
+            raise HTTPException(401, "invalid device key")
         return engine.ingest(batch.model_dump())
 
     # ------------------------------------------------------------ real hardware
@@ -196,28 +201,37 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
     def sensor(pid: str, body: SensorIn, x_device_key: str = Header(default="")):
         """Real sensors at the bedside push here every few seconds; values flow into the next
         reading of that home's hub. A press of the bedside button acknowledges open alerts."""
-        if x_device_key != DEVICE_KEY:
-            raise HTTPException(401, "invalid device key")
         if pid not in engine.patients:
             raise HTTPException(404)
+        if not device_ok(x_device_key, pid):
+            raise HTTPException(401, "invalid device key")
         hub = hubs.get(pid)
         if hub:
             hub.hw_update(body.model_dump())
         acked = []
         if body.button:
-            for a in engine.alerts(0):
-                if a["patient_id"] == pid and a["status"] == "OPEN":
-                    engine.ack(a["id"], "Bedside button")
-                    acked.append(a["id"])
-            if pid in engine.on_duty:
-                engine.on_duty[pid].update({"verified": True, "last_seen": engine.clock.now()})
-        return {"ok": True, "acknowledged": acked, **command(pid)}
+            with engine.lock:
+                for a in engine.alerts(0):
+                    if a["patient_id"] == pid and a["status"] == "OPEN":
+                        engine.ack(a["id"], "Bedside button")
+                        acked.append(a["id"])
+                if pid in engine.on_duty:
+                    engine.on_duty[pid].update({"verified": True, "last_seen": engine.clock.now()})
+        return {"ok": True, "acknowledged": acked, **alarm_state(pid)}
 
     @app.get("/api/devices/{pid}/command")
-    def command(pid: str):
-        """What the bedside buzzer / LED should do right now."""
+    def command(pid: str, request: Request, x_device_key: str = Header(default="")):
+        """What the bedside buzzer / LED should do right now (device key, or a session allowed to see the patient)."""
         if pid not in engine.patients:
             raise HTTPException(404)
+        if not device_ok(x_device_key, pid):
+            u = auth.resolve(token_of(request))
+            if not u:
+                raise HTTPException(401, "device key or login required")
+            patient_guard(u, pid)
+        return alarm_state(pid)
+
+    def alarm_state(pid: str) -> dict:
         with engine.lock:
             st = engine.state[pid]
             open_ = [a for a in engine.alerts(0) if a["patient_id"] == pid and a["status"] == "OPEN"]
@@ -238,7 +252,8 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
 
         async def gen():
             while not await request.is_disconnected() and auth.resolve(tok):
-                yield f"data: {json.dumps(build_state(user))}\n\n"
+                state = await asyncio.to_thread(build_state, user)  # keep the event loop free
+                yield f"data: {json.dumps(state)}\n\n"
                 await asyncio.sleep(1.0)
         return StreamingResponse(gen(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -246,10 +261,11 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
     def build_state(user: dict):
         """Everything the UI needs - filtered to the patients this user is allowed to see."""
         desk = user["role"] == "desk"
-        allowed = [pid for pid in engine.patients if auth.can_see(user, pid)]
+        allowed = [pid for pid in engine.patients if auth.can_see(user, pid)] or ["-"]  # "-" keeps SQL valid
         with engine.lock:
             pats = []
-            open_alerts = engine.alerts(0)
+            all_alerts = engine.alerts()
+            open_alerts = [a for a in all_alerts if a["status"] != "RESOLVED"]
             for pid, p in engine.patients.items():
                 if pid not in allowed:
                     continue
@@ -288,7 +304,7 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
             return {
                 "user": {k: user[k] for k in ("id", "name", "role", "patients")},
                 "sim_time": engine.clock.now(), "speed": engine.clock.speed, "paused": engine.clock.paused,
-                "patients": pats, "alerts": [a for a in engine.alerts() if a["patient_id"] in allowed],
+                "patients": pats, "alerts": [a for a in all_alerts if a["patient_id"] in allowed],
                 "messages": msgs, "audit": audit,
                 "metrics": engine.m | {"ml_breaker": engine.breaker.state, "ml_fallbacks": engine.breaker.fallback_count,
                                        "ml_failures": engine.breaker.total_failures},
@@ -320,7 +336,8 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
             return engine.sbar(pid)
 
     def alert_guard(user, aid):
-        row = engine.db.execute("SELECT patient_id FROM alerts WHERE id=?", (aid,)).fetchone()
+        with engine.lock:
+            row = engine.db.execute("SELECT patient_id FROM alerts WHERE id=?", (aid,)).fetchone()
         if not row:
             raise HTTPException(404)
         patient_guard(user, row[0])

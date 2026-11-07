@@ -37,11 +37,12 @@
   </div>
   <script>
     const ROLE = { desk: "Care desk · all homes", family: "Family / carer · own patient only" };
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     const initials = (n) => n.replace(/\(.*?\)/g, "").split(" ").filter((w) => /^[A-Z]/.test(w)).map((w) => w[0]).slice(0, 2).join("");
     let chosen = null;
     try { if (localStorage.getItem("hw.theme")) document.documentElement.dataset.theme = localStorage.getItem("hw.theme"); } catch {}
     fetch("/api/users").then((r) => r.json()).then((users) => {
-      document.getElementById("who").innerHTML = users.map((u) => `<button type="button" data-id="${u.id}" data-role="${u.role}"><div class="avatar t-${u.role === "desk" ? "STABLE" : "WATCH"}">${initials(u.name)}</div><div><b>${u.name}</b><small>${ROLE[u.role]}</small></div></button>`).join("");
+      document.getElementById("who").innerHTML = users.map((u) => `<button type="button" data-id="${u.id}" data-role="${u.role}"><div class="avatar t-${u.role === "desk" ? "STABLE" : "WATCH"}">${esc(initials(u.name))}</div><div><b>${esc(u.name)}</b><small>${ROLE[u.role]}</small></div></button>`).join("");
       document.querySelectorAll(".who button").forEach((b) => b.onclick = () => { chosen = b.dataset; document.querySelectorAll(".who button").forEach((x) => x.classList.toggle("on", x === b)); document.getElementById("pin").focus(); });
       document.querySelector(".who button").click();
     });

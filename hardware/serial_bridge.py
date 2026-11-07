@@ -10,8 +10,9 @@ alarm command is written back so the board's buzzer/LED follow the patient's ale
 If the platform is unreachable the board's own offline safety rules take over.
 """
 import argparse
+import sys
+from pathlib import Path
 import json
-import os
 import time
 
 import httpx
@@ -37,6 +38,9 @@ def run(port: str, patient: str, server: str, key: str, baud: int = 115200):
             continue
         try:
             r = http.post(url, json=body, headers={"X-Device-Key": key})
+            if r.status_code in (401, 403, 404):
+                print(f"rejected by platform ({r.status_code}): {r.json().get('detail')} - check --patient / --key")
+                continue
             r.raise_for_status()
             cmd = r.json()
             ser.write((json.dumps({"alarm": cmd["alarm"], "led": cmd["led"]}) + "\n").encode())
@@ -50,6 +54,10 @@ if __name__ == "__main__":
     ap.add_argument("--port", required=True)
     ap.add_argument("--patient", default="P-101")
     ap.add_argument("--server", default="http://127.0.0.1:8000")
-    ap.add_argument("--key", default=os.environ.get("HOMEWARD_DEVICE_KEY", "demo-device-key-change-me"))
+    ap.add_argument("--key", default=None, help="this device's key (default: derived from HOMEWARD_DEVICE_KEY for the patient's hub)")
     a = ap.parse_args()
+    if not a.key:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from homeward.core import device_key
+        a.key = device_key(f"HUB-{a.patient}")
     run(a.port, a.patient, a.server, a.key)

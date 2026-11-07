@@ -18,7 +18,7 @@ from pathlib import Path
 import httpx
 
 from . import news2, quality
-from .core import DEVICE_KEY, Chaos, SimClock
+from .core import Chaos, SimClock, device_key
 from .physiology import SAMPLE_MINUTES, PatientPhysiology, PatientProfile
 
 
@@ -27,6 +27,7 @@ class EdgeHub:
                  db_path: str | Path = ":memory:", seed: int = 0, transport: httpx.Client | None = None):
         self.p = profile
         self.device_id = f"HUB-{profile.patient_id}"
+        self.key = device_key(self.device_id)
         self.url = server_url.rstrip("/")
         self.clock, self.chaos = clock, chaos
         self.phys = PatientPhysiology(profile, seed=seed)
@@ -34,7 +35,7 @@ class EdgeHub:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("CREATE TABLE IF NOT EXISTS outbox(seq INTEGER PRIMARY KEY, kind TEXT, ts REAL, body TEXT)")
         self.db.commit()
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         row = self.db.execute("SELECT MAX(seq) FROM outbox").fetchone()
         self.seq = row[0] or 0
         self.http = transport or httpx.Client(timeout=3.0)
@@ -157,7 +158,7 @@ class EdgeHub:
             return
         self.prev_good = r
         s = news2.score(r, self.p.spo2_scale)["total"]
-        self.local_scores = (self.local_scores + [s])[-2:]
+        self.local_scores = [*self.local_scores, s][-2:]
         critical = len(self.local_scores) == 2 and min(self.local_scores) >= 5
         if critical and self.offline_since is not None and not self.local_alarm_active:
             self.local_alarm_active = True
@@ -181,7 +182,8 @@ class EdgeHub:
 
     # ------------------------------------------------------------ uplink
     def pending(self) -> int:
-        return self.db.execute("SELECT COUNT(*) FROM outbox").fetchone()[0]
+        with self.lock:  # the API thread reads status while the hub thread writes
+            return self.db.execute("SELECT COUNT(*) FROM outbox").fetchone()[0]
 
     def flush(self, max_batches: int = 20) -> int:
         sent = 0
@@ -204,10 +206,10 @@ class EdgeHub:
             try:
                 if self.chaos.network_down:
                     raise httpx.ConnectError("simulated network outage")
-                resp = self.http.post(f"{self.url}/api/ingest", json=batch, headers={"X-Device-Key": DEVICE_KEY})
+                resp = self.http.post(f"{self.url}/api/ingest", json=batch, headers={"X-Device-Key": self.key})
                 resp.raise_for_status()
                 if self.chaos.duplicate_storm:  # resend the same batch: must be a no-op server-side
-                    self.http.post(f"{self.url}/api/ingest", json=batch, headers={"X-Device-Key": DEVICE_KEY})
+                    self.http.post(f"{self.url}/api/ingest", json=batch, headers={"X-Device-Key": self.key})
             except Exception:
                 self.stats["failed_attempts"] += 1
                 if self.offline_since is None:

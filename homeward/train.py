@@ -136,7 +136,7 @@ def episodes(times, flags, refractory_h=12):
     """count rising edges of an alert signal, with a refractory period (deduplication)"""
     out, last = [], -1e18
     prev = False
-    for tt, f in zip(times, flags):
+    for tt, f in zip(times, flags, strict=True):
         if f and not prev and tt - last > refractory_h * 3600:
             out.append(tt); last = tt
         prev = f
@@ -155,7 +155,8 @@ def main(n_patients: int = 900, seed: int = 7):
     ytr = np.concatenate([d["y"][d["t"] < (d["event_t"] or 1e18)] for d in tr])
     m = fit_logreg_signed(Xtr, ytr, np.array(SIGNS, float), l2=2.0)
     coef, b, mu, sd = np.array(m["coef"]), m["intercept"], np.array(m["mean"]), np.array(m["std"])
-    prob = lambda X: sigmoid(b + ((X - mu) / sd) @ coef)
+    def prob(X):
+        return sigmoid(b + ((X - mu) / sd) @ coef)
 
     # threshold: lowest threshold whose false early-warning rate on STABLE training patients
     # stays <= TARGET_FA per patient-day (alarm-fatigue budget), using the same
@@ -224,7 +225,7 @@ def main(n_patients: int = 900, seed: int = 7):
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps({"threshold": model["threshold"], "metrics": res,
                                "dropped_for_wrong_sign": [FEATURES[i] for i in m.get("dropped", [])],
-                               "coefficients": dict(zip(FEATURES, [round(c, 3) for c in m["coef"]]))}, indent=1))
+                               "coefficients": dict(zip(FEATURES, [round(c, 3) for c in m["coef"]], strict=True))}, indent=1))
     print(json.dumps(res, indent=1))
     print(f"threshold={thr:.3f}  trained in {time.time() - t0:.1f}s on {len(ytr)} samples")
 

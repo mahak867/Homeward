@@ -314,7 +314,10 @@ class Engine:
 
         # display hysteresis: escalate immediately; step down one level only after 30 min of calmer readings
         prev_tier = st.get("tier")
-        if prev_tier in SEV_TIER and SEV_TIER[tier] < SEV_TIER[prev_tier] and at >= st.get("at", 0):
+        live = at >= st.get("at", 0)
+        if not live:
+            pass  # a replayed, older reading: never alters the live display hysteresis
+        elif prev_tier in SEV_TIER and SEV_TIER[tier] < SEV_TIER[prev_tier]:
             st["calm_count"] = st.get("calm_count", 0) + 1
             if st["calm_count"] < CALM_READINGS:
                 why.append(f"Holding {prev_tier} until improvement is sustained ({st['calm_count']}/{CALM_READINGS} calmer readings)")

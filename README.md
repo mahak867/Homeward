@@ -1,6 +1,6 @@
 # HomeWard: a hospital ward that fits inside a bedroom
 
-[![CI](https://github.com/mahak867/smart-health/actions/workflows/ci.yml/badge.svg)](https://github.com/mahak867/smart-health/actions/workflows/ci.yml) ![tests](https://img.shields.io/badge/tests-141%20%2B%2022%20browser-brightgreen) ![python](https://img.shields.io/badge/python-3.10%2B-blue) ![languages](https://img.shields.io/badge/notes-EN%20%C2%B7%20HI%20%C2%B7%20Hinglish%20%C2%B7%20TA%20%C2%B7%20Tanglish-orange)
+[![CI](https://github.com/mahak867/smart-health/actions/workflows/ci.yml/badge.svg)](https://github.com/mahak867/smart-health/actions/workflows/ci.yml) ![tests](https://img.shields.io/badge/tests-144%20%2B%2022%20browser-brightgreen) ![python](https://img.shields.io/badge/python-3.10%2B-blue) ![languages](https://img.shields.io/badge/notes-EN%20%C2%B7%20HI%20%C2%B7%20Hinglish%20%C2%B7%20TA%20%C2%B7%20Tanglish-orange)
 
 Built by Team **Smart Health** for **Operation Ward Zero**.
 
@@ -44,7 +44,7 @@ Then open:
 | **http://127.0.0.1:8000/caregiver?lang=hi** | Family-caregiver phone app (Hindi/English). Sign in as Sunita **1111**, Meena **2222** or Joseph **3333**; each sees only their own patient. |
 | **http://127.0.0.1:8000/docs** | Interactive API documentation |
 
-To run the 141 automated safety, resilience and privacy tests:
+To run the 144 automated safety, resilience and privacy tests:
 
 ```bash
 pytest -q
@@ -105,12 +105,12 @@ homeward/
   server.py                FastAPI: device, dashboard, streaming and demo APIs
 web/                       dashboard, guided demo, caregiver app (no build step, works offline)
 hardware/                  ESP32 firmware, serial bridge, virtual ESP32, wiring + BOM
-tests/                     141 pytest checks + 22-check real-browser E2E suite (tests/e2e)
+tests/                     144 pytest checks + 22-check real-browser E2E suite (tests/e2e)
 scripts/fast_forward.py    prints a 40 h alert timeline in seconds
 docs/                      technical doc, model card, demo script, screenshots
 ```
 
-**Quality:** 141 unit / integration / resilience / privacy tests, including every NEWS2 threshold boundary; 22 real-browser end-to-end checks; CI on every push.
+**Quality:** 144 unit / integration / resilience / privacy tests, including every NEWS2 threshold boundary; 22 real-browser end-to-end checks; CI on every push.
 
 **Stack:** Python · FastAPI · SQLite (WAL) · NumPy · httpx · Server-Sent Events · vanilla HTML/CSS/JS with canvas charts · pytest · Playwright · Arduino (ESP32).
 

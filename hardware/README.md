@@ -56,7 +56,7 @@ Optional: an MLX90614 non-contact IR thermometer instead of the DS18B20 (₹900)
 
 2. In the Arduino IDE, install the **ESP32 board package**. Then add these libraries: *SparkFun MAX3010x Pulse and Proximity Sensor Library*, *OneWire*, *DallasTemperature* and *ArduinoJson* (v7).
 
-3. Open `hardware/esp32_homeward/esp32_homeward.ino`. Set `WIFI_SSID`, `WIFI_PASS`, `SERVER` (for example `http://192.168.1.50:8000`) and `PATIENT_ID` (`P-101` = Kamla Devi). Then upload to **ESP32 Dev Module**.
+3. Open `hardware/esp32_homeward/esp32_homeward.ino`. Set `WIFI_SSID`, `WIFI_PASS`, `SERVER` (for example `http://192.168.1.50:8000`) and `PATIENT_ID` (`P-101` = Kamla Devi) and `DEVICE_KEY`, the board's own key printed by `python -m homeward.core HUB-P-101`. Each home's device has a different key, so a board can never post data for another patient. Then upload to **ESP32 Dev Module**.
 
 4. Put a finger on the sensor. Within about 10 s, the dashboard shows **"🔌 Real sensor"** for that patient and the charts use the real pulse, SpO₂ and temperature.
 
@@ -100,8 +100,8 @@ python hardware/virtual_esp32.py --patient P-101 --press-button
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/devices/{patient}/sensor` (header `X-Device-Key`) | Body: `{"hr", "spo2", "temp", "finger", "sqi", "button", "firmware"}`. The response includes the current alarm command. |
-| `GET /api/devices/{patient}/command` | Returns `{"tier", "alarm": off/chirp/slow/fast, "led": green/amber/red, "open_alerts"}`. |
+| `POST /api/devices/{patient}/sensor` (header `X-Device-Key`: that home's own key) | Body: `{"hr", "spo2", "temp", "finger", "sqi", "button", "firmware"}`. The response includes the current alarm command. |
+| `GET /api/devices/{patient}/command` (device key, or a signed-in user allowed to see the patient) | Returns `{"tier", "alarm": off/chirp/slow/fast, "led": green/amber/red, "open_alerts"}`. |
 | `POST /api/ingest` | Full hub protocol: ordered, sequence-numbered batches of complete readings plus events (pill box, bed sensor, local alarm). |
 
 ## Extending the bedside kit
