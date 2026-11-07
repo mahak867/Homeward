@@ -58,7 +58,30 @@ function render() {
   $("#clock").textContent = fmtTime(S.sim_time, true);
   $$("#speedSeg button[data-speed]").forEach((b) => b.classList.toggle("on", !S.paused && +b.dataset.speed === S.speed));
   $("#pause").textContent = S.paused ? "Resume" : "Pause";
-  renderKpis(); renderList(); renderDetail(); renderAlerts(); renderActivity(); renderLab(); notifyNew();
+  renderKpis(); renderPipeline(); renderList(); renderDetail(); renderAlerts(); renderActivity(); renderLab(); notifyNew();
+}
+
+const pipePrev = {}; let rpm = { t: Date.now(), n: null, v: 0 };
+function renderPipeline() {
+  const m = S.metrics, pts = S.patients, open = S.alerts.filter((a) => a.status !== "RESOLVED");
+  const now = Date.now(); if (rpm.n == null) rpm = { t: now, n: m.received, v: 0 };
+  else if (now - rpm.t > 5000) { rpm = { t: now, n: m.received, v: Math.round((m.received - rpm.n) / ((now - rpm.t) / 60000)) }; }
+  const live = pts.filter((p) => p.data_state === "LIVE").length;
+  const queued = pts.reduce((s, p) => s + ((p.hub && p.hub.buffered) || 0), 0);
+  const acked = S.alerts.filter((a) => a.acked_real).length;
+  const nodes = [
+    ["sense", "📡", "Sensors", `${pts.length * 7} devices · ${rpm.v || "…"} readings/min`, false],
+    ["edge", "🏠", "Edge hubs", `${live}/${pts.length} online · ${queued} queued`, live < pts.length || queued > 0],
+    ["plat", "🖥️", "Platform", `${m.received} ingested · ${m.duplicates} dupes dropped`, false],
+    ["ai", "🧠", "AI risk", `${pts.filter((p) => p.forecast && p.forecast.source !== "calibrating").length} forecasts · ${m.ml_breaker === "closed" ? "model OK" : "rule fallback"}`, m.ml_breaker !== "closed"],
+    ["alert", "🚨", "Alerts", `${open.length} open · ${S.responses.escalated} escalated`, open.some((a) => a.severity === "CRITICAL")],
+    ["resp", "🙋", "Response", `${acked} acknowledged · median ${S.responses.median_ack_s ?? "-"}s`, false],
+  ];
+  const sig = { sense: m.received, edge: queued, plat: m.received, ai: m.received, alert: open.length, resp: acked };
+  $("#pipeline").innerHTML = nodes.map(([k, ic, t, sub, bad], i) => {
+    const pulse = pipePrev[k] !== undefined && pipePrev[k] !== sig[k]; pipePrev[k] = sig[k];
+    return `${i ? `<div class="parr">→</div>` : ""}<div class="pnode ${pulse ? "pulse" : ""} ${bad ? "bad" : ""}" id="pn-${k}"><div class="ic">${ic}</div><div><b>${t}</b><span>${sub}</span></div></div>`;
+  }).join("");
 }
 
 function renderKpis() {

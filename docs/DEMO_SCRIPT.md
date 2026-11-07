@@ -7,7 +7,7 @@ The easiest way to record is the built-in **▶ Guided demo**. It drives the liv
 1. Start the app with `python run.py`. Each start gives a clean demo.
 2. Open http://127.0.0.1:8000 in a browser window about 1600 × 1000 or larger. Optionally put `/caregiver?lang=hi` in a phone-sized window next to it.
 3. Start a screen recorder (OBS, Loom, Windows Game Bar, or QuickTime on macOS).
-4. Click **▶ Guided demo** (or open `http://127.0.0.1:8000/?tour=1`) and read the captions aloud as voice-over. **Pause** and **Next** are on the caption card.
+4. Click **▶ Guided demo** (or open `http://127.0.0.1:8000/?tour=1`). **Pause** and **Next** are on the caption card. For a caption-free recording, open `http://127.0.0.1:8000/?tour=1&clean=1` and use [VOICEOVER_SCRIPT.md](VOICEOVER_SCRIPT.md).
 
 ## Story and voice-over (follows the caption cards)
 
