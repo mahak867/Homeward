@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b2a3a">
+  <title>HomeWard · Caregiver</title>
+  <style>
+    :root { --ink: #142033; --muted: #5d6b80; --line: #e2e7ee; --bg: #f3f5f8;
+      --STABLE: #15803d; --WATCH: #b45309; --HIGH: #c2410c; --CRITICAL: #b91c1c; --UNKNOWN: #64748b; --LOW: #475569; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { margin: 0; font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Devanagari", sans-serif; background: var(--bg); color: var(--ink); }
+    header { background: #0b2a3a; color: #fff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 2; }
+    header b { font-size: 17px; }
+    select, button, textarea { font: inherit; }
+    header select { background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 8px; padding: 5px 6px; max-width: 46vw; }
+    header select option { color: #000; }
+    .lang { background: none; border: 1px solid rgba(255,255,255,.4); color: #fff; border-radius: 8px; padding: 5px 9px; }
+    main { padding: 16px; max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+    .status { border-radius: 18px; padding: 20px; color: #fff; background: var(--c); text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+    .status .big { font-size: 26px; font-weight: 800; }
+    .status .sub { opacity: .92; margin-top: 4px; font-size: 15px; }
+    .status ul { text-align: left; margin: 10px 0 0; padding-left: 20px; font-size: 14px; opacity: .95; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+    .card h3 { margin: 0 0 8px; font-size: 15px; color: var(--muted); }
+    .alert { border-left: 6px solid var(--c); }
+    .alert .t { font-weight: 700; font-size: 17px; }
+    .alert .do { background: #f7f9fb; border-radius: 10px; padding: 8px 10px; margin: 8px 0; font-size: 15px; }
+    .row { display: flex; gap: 8px; }
+    .bigbtn { flex: 1; border: 0; border-radius: 14px; padding: 15px 10px; font-weight: 700; font-size: 16px; color: #fff; background: #0f766e; }
+    .bigbtn.alt { background: #e2e8f0; color: var(--ink); }
+    .bigbtn.sos { background: #b91c1c; }
+    .vit { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+    .vit div { background: #f7f9fb; border-radius: 12px; padding: 8px 4px; }
+    .vit b { display: block; font-size: 22px; }
+    .vit span { font-size: 12px; color: var(--muted); }
+    textarea { width: 100%; min-height: 80px; border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .chip { background: #fff6e5; color: #b45309; border-radius: 99px; padding: 3px 10px; font-size: 13px; }
+    .acv { display: grid; gap: 8px; }
+    .acv button { text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 12px; padding: 12px; font-size: 15px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #111827; color: #fff; padding: 10px 16px; border-radius: 12px; z-index: 9; }
+    .mic { border: 1px solid var(--line); background: #fff; border-radius: 12px; padding: 0 14px; font-size: 20px; }
+  </style>
+</head>
+<body>
+  <header><b>🏠 HomeWard</b><select id="who"></select><button class="lang" id="lang">हिन्दी</button></header>
+  <main id="app"><div class="muted">Loading…</div></main>
+  <script>
+  const T = {
+    en: { STABLE: "All okay", WATCH: "Keep a close eye", HIGH: "Needs a doctor's review soon", CRITICAL: "Emergency - act now", UNKNOWN: "We can't see the readings",
+      sub_STABLE: "Vitals look normal for {n}.", sub_WATCH: "Something is slowly changing. Check on {n} and add a note.", sub_HIGH: "Call the care desk / doctor within the hour.",
+      sub_CRITICAL: "Stay with {n}. The care desk has been alerted. Call 108 if breathing is difficult or {n} is hard to wake.", sub_UNKNOWN: "The bedside hub is not sending data. Please check on {n} in person.",
+      here: "I'm with the patient", done: "Done - all handled", call: "📞 Call care desk", sos: "🚑 Call 108", note: "Tell us what you notice", notePh: "e.g. saans phool rahi hai / she seems confused",
+      send: "Send note", round: "Routine check - how is the patient responding?", A: "😊 Awake and talking normally", C: "😵 Confused / not making sense (new)", V: "🗣 Only responds when I speak loudly", P: "✋ Only responds to touch / pain", U: "⚠ Not responding at all",
+      understood: "We understood:", nothing: "Thank you - nothing worrying found in the note.", alerts: "Needs your attention", noAlerts: "No alerts right now 🙏", saved: "Saved", vitals: "Latest readings", ago: "min ago" },
+    hi: { STABLE: "सब ठीक है", WATCH: "ध्यान से देखते रहें", HIGH: "जल्द डॉक्टर से दिखाना ज़रूरी", CRITICAL: "आपातकाल - अभी कदम उठाएँ", UNKNOWN: "रीडिंग नहीं दिख रही",
+      sub_STABLE: "{n} के सभी संकेत सामान्य हैं।", sub_WATCH: "धीरे-धीरे कुछ बदल रहा है। {n} को देखें और नोट लिखें।", sub_HIGH: "एक घंटे के अंदर केयर डेस्क / डॉक्टर को फ़ोन करें।",
+      sub_CRITICAL: "{n} के पास रहें। केयर डेस्क को सूचना दे दी गई है। साँस में बहुत तकलीफ़ हो या जगाना मुश्किल हो तो 108 पर कॉल करें।", sub_UNKNOWN: "बेडसाइड हब डेटा नहीं भेज रहा। कृपया {n} को खुद जाकर देखें।",
+      here: "मैं मरीज़ के पास हूँ", done: "हो गया - संभाल लिया", call: "📞 केयर डेस्क को कॉल", sos: "🚑 108 पर कॉल", note: "आप क्या देख रहे हैं, बताइए", notePh: "जैसे: साँस फूल रही है / खाना नहीं खाया",
+      send: "नोट भेजें", round: "नियमित जाँच - मरीज़ कैसे जवाब दे रहे हैं?", A: "😊 जागे हुए हैं, सामान्य बात कर रहे हैं", C: "😵 उलझन में हैं / अजीब बातें (नया)", V: "🗣 सिर्फ़ ज़ोर से बोलने पर जवाब", P: "✋ सिर्फ़ छूने / दर्द पर जवाब", U: "⚠ बिल्कुल जवाब नहीं दे रहे",
+      understood: "हमने समझा:", nothing: "धन्यवाद - नोट में कोई चिंता की बात नहीं मिली।", alerts: "आपका ध्यान चाहिए", noAlerts: "अभी कोई अलर्ट नहीं 🙏", saved: "सेव हो गया", vitals: "ताज़ा रीडिंग", ago: "मिनट पहले" },
+  };
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const qs = new URLSearchParams(location.search);
+  let lang = qs.get("lang") || "en", pid = qs.get("p") || "P-101", S = null, lastNote = null;
+  const t = (k, n) => (T[lang][k] || k).replaceAll("{n}", n || "");
+  const api = async (p, b) => { const r = await fetch(p, b ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) } : {}); if (!r.ok) throw 0; return r.json(); };
+  const toast = (m) => { const d = document.createElement("div"); d.className = "toast"; d.textContent = m; document.body.appendChild(d); setTimeout(() => d.remove(), 2500); };
+  document.getElementById("lang").onclick = () => { lang = lang === "en" ? "hi" : "en"; document.getElementById("lang").textContent = lang === "en" ? "हिन्दी" : "English"; render(true); };
+  document.getElementById("who").onchange = (e) => { pid = e.target.value; render(true); };
+
+  async function poll() { try { S = await api("/api/state"); render(); } catch {} setTimeout(poll, 1500); }
+  let lastKey = "";
+  function render(force) {
+    if (!S) return;
+    const who = document.getElementById("who");
+    if (!who.options.length) { who.innerHTML = S.patients.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join(""); who.value = pid; }
+    const p = S.patients.find((x) => x.id === pid); const first = p.name.split(" ")[0] + (lang === "hi" ? " जी" : "");
+    const tier = ["STALE", "OFFLINE", "NO_DATA"].includes(p.data_state) ? "UNKNOWN" : p.tier;
+    const alerts = S.alerts.filter((a) => a.patient_id === pid && a.status !== "RESOLVED");
+    const key = JSON.stringify([tier, alerts.map((a) => [a.id, a.status, a.severity]), p.latest && p.latest.ts, lang, lastNote]);
+    if (!force && key === lastKey) return; lastKey = key;
+    const me = p.contacts[0].name;
+    const l = p.latest || {};
+    const typing = document.activeElement && document.activeElement.id === "note" ? document.getElementById("note").value : null;
+    document.getElementById("app").innerHTML = `
+      <div class="status" style="--c:var(--${tier})"><div class="big">${t(tier)}</div><div class="sub">${t("sub_" + tier, first)}</div></div>
+      <div class="card"><h3>${t("alerts")}</h3>${alerts.length ? alerts.map((a) => `
+        <div class="card alert" style="--c:var(--${a.severity});margin-bottom:8px"><div class="t">${esc(a.title)}</div>
+        ${(a.detail.why || []).slice(0, 2).map((w) => `<div class="muted">• ${esc(w)}</div>`).join("")}
+        ${a.detail.recommendation ? `<div class="do">➜ ${esc(a.detail.recommendation)}</div>` : ""}
+        <div class="row">${a.status === "OPEN" ? `<button class="bigbtn" data-ack="${a.id}">${t("here")}</button>` : ""}<button class="bigbtn alt" data-done="${a.id}">${t("done")}</button></div></div>`).join("") : `<div class="muted">${t("noAlerts")}</div>`}
+        <div class="row" style="margin-top:8px"><a class="bigbtn alt" style="text-align:center;text-decoration:none" href="tel:${esc(p.contacts[2].phone)}">${t("call")}</a><a class="bigbtn sos" style="text-align:center;text-decoration:none" href="tel:108">${t("sos")}</a></div></div>
+      <div class="card"><h3>${t("note")}</h3><div class="row"><textarea id="note" placeholder="${esc(t("notePh"))}"></textarea>${("webkitSpeechRecognition" in window || "SpeechRecognition" in window) ? `<button class="mic" id="mic" title="Speak">🎤</button>` : ""}</div>
+        <button class="bigbtn" id="send" style="width:100%;margin-top:8px">${t("send")}</button><div id="und">${lastNote || ""}</div></div>
+      <div class="card"><h3>${t("round")}</h3><div class="acv">${["A", "C", "V", "P", "U"].map((k) => `<button data-acvpu="${k}">${t(k)}</button>`).join("")}</div></div>
+      <div class="card"><h3>${t("vitals")} <span class="muted">(${p.data_age_min ?? "-"} ${t("ago")})</span></h3><div class="vit">
+        <div><b>${l.hr != null ? Math.round(l.hr) : "-"}</b><span>❤️ pulse</span></div><div><b>${l.spo2 != null ? Math.round(l.spo2) : "-"}%</b><span>🫁 oxygen</span></div><div><b>${l.temp != null ? (+l.temp).toFixed(1) : "-"}°</b><span>🌡 temp</span></div></div></div>
+      <div class="muted" style="text-align:center">Prototype · synthetic data · not a medical device</div>`;
+    if (typing !== null) { const n = document.getElementById("note"); n.value = typing; n.focus(); }
+    document.querySelectorAll("[data-ack]").forEach((b) => b.onclick = async () => { await api(`/api/alerts/${b.dataset.ack}/ack`, { by: me }); toast(t("saved")); S = await api("/api/state"); render(true); });
+    document.querySelectorAll("[data-done]").forEach((b) => b.onclick = async () => { await api(`/api/alerts/${b.dataset.done}/resolve`, { by: me, action: "Handled at home by caregiver", note: "" }); toast(t("saved")); S = await api("/api/state"); render(true); });
+    document.querySelectorAll("[data-acvpu]").forEach((b) => b.onclick = async () => { await api(`/api/patients/${pid}/rounds`, { caregiver: me, acvpu: b.dataset.acvpu, note: "" }); toast(t("saved")); });
+    document.getElementById("send").onclick = async () => {
+      const text = document.getElementById("note").value.trim(); if (!text) return;
+      const a = await api(`/api/patients/${pid}/notes`, { author: me, text });
+      const sig = a.signals.filter((s) => s.weight > 0);
+      lastNote = sig.length ? `<div class="muted" style="margin-top:8px">${t("understood")}</div><div class="chips">${sig.map((s) => `<span class="chip">${esc(s.label)}</span>`).join("")}</div>` : `<div class="muted" style="margin-top:8px">${t("nothing")}</div>`;
+      document.getElementById("note").value = ""; render(true);
+    };
+    const mic = document.getElementById("mic");
+    if (mic) mic.onclick = () => { const R = window.SpeechRecognition || window.webkitSpeechRecognition; const r = new R(); r.lang = lang === "hi" ? "hi-IN" : "en-IN"; r.onresult = (e) => { document.getElementById("note").value += e.results[0][0].transcript; }; r.start(); };
+  }
+  poll();
+  </script>
+</body>
+</html>

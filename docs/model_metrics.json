@@ -1,0 +1,68 @@
+{
+ "threshold": 0.39,
+ "metrics": {
+  "auroc_sample_level": 0.754,
+  "test_patients": 270,
+  "test_deteriorations": 144,
+  "ml_flagged_before_news2_5": "106/144",
+  "ml_median_lead_h": 10.2,
+  "news2_ge3_flagged_before_news2_5": "118/144",
+  "news2_ge3_median_lead_h": 6.0,
+  "ml_false_early_warnings_per_stable_patient_day": 0.115,
+  "news2_ge3_alerts_per_stable_patient_day": 0.265,
+  "per_scenario": {
+   "acute_hypoxia": {
+    "n": 38,
+    "flagged_early": 6,
+    "median_lead_h": 11.8
+   },
+   "hf_decompensation": {
+    "n": 41,
+    "flagged_early": 41,
+    "median_lead_h": 15.9
+   },
+   "sepsis": {
+    "n": 54,
+    "flagged_early": 51,
+    "median_lead_h": 7.7
+   },
+   "copd_exacerbation": {
+    "n": 8,
+    "flagged_early": 7,
+    "median_lead_h": 15.3
+   },
+   "unprompted": {
+    "n": 3,
+    "flagged_early": 1,
+    "median_lead_h": 12.4
+   }
+  }
+ },
+ "dropped_for_wrong_sign": [
+  "slope6_hr",
+  "slope6_temp",
+  "slope12_hr",
+  "slope12_temp",
+  "note_concern"
+ ],
+ "coefficients": {
+  "dev_hr": 0.258,
+  "dev_rr": 0.124,
+  "dev_spo2": -0.097,
+  "dev_sbp": -0.127,
+  "dev_temp": 0.092,
+  "slope6_hr": 0.0,
+  "slope6_rr": 0.097,
+  "slope6_spo2": -0.21,
+  "slope6_sbp": -0.014,
+  "slope6_temp": 0.0,
+  "slope12_hr": 0.0,
+  "slope12_rr": 0.043,
+  "slope12_spo2": -0.455,
+  "slope12_sbp": -0.159,
+  "slope12_temp": 0.0,
+  "weight_delta": 0.5,
+  "news2_now": 0.306,
+  "note_concern": 0.0
+ }
+}

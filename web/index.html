@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HomeWard · Smart Health</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><div class="logo">🏠</div><div>Smart Health · HomeWard<small>A hospital ward that fits inside a bedroom</small></div></div>
+    <div class="spacer"></div>
+    <div class="speed" title="Simulated time runs faster so a 24-48 h deterioration fits in a demo">
+      Sim speed
+      <button data-speed="60">1 min/s</button>
+      <button data-speed="300">5 min/s</button>
+      <button data-speed="900">15 min/s</button>
+      <button data-speed="1800">30 min/s</button>
+      <button id="pause">Pause</button>
+    </div>
+    <div class="clock" id="clock">--</div>
+    <span class="pill ok" id="conn">Live</span>
+    <button class="topbtn" id="soundBtn" title="Play a sound for HIGH/CRITICAL alerts">🔈 Sound off</button>
+    <button class="topbtn lab" id="labBtn">🧪 Resilience Lab</button>
+    <a class="topbtn" href="/caregiver" target="_blank" style="text-decoration:none">📱 Caregiver app</a>
+  </header>
+  <div class="disclaimer">Prototype for <b>Operation Ward Zero</b> · all patients and data are <b>synthetic</b> · decision support only, <b>not a medical device</b> and not a diagnosis.</div>
+  <div id="offline" class="offline-banner hidden">Connection to the HomeWard platform lost - retrying. Do not rely on this screen; check patients in person.</div>
+
+  <section id="lab" class="lab hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <h3>🧪 Resilience Lab - break things on purpose and watch the system cope</h3>
+      <span class="chip">Every switch below is a real fault in the running system, not an animation.</span>
+    </div>
+    <div class="labgrid">
+      <div>
+        <div class="toggle"><div><b>Internet outage (all homes)</b><small>Hubs keep recording to their local outbox; critical patients trigger an in-room alarm; everything syncs on reconnect.</small></div><label class="sw"><input type="checkbox" data-chaos="network_down"><span></span></label></div>
+        <div class="toggle"><div><b>Duplicate packet storm</b><small>Every batch is sent twice. Server ingestion is idempotent on (device, sequence).</small></div><label class="sw"><input type="checkbox" data-chaos="duplicate_storm"><span></span></label></div>
+        <div class="toggle"><div><b>Out-of-order delivery</b><small>Readings arrive shuffled. Analysis keys on measurement time, not arrival time.</small></div><label class="sw"><input type="checkbox" data-chaos="out_of_order"><span></span></label></div>
+        <div class="toggle"><div><b>AI service crash</b><small>Circuit breaker opens; transparent rule-based trend fallback takes over. NEWS2 safety floor is unaffected.</small></div><label class="sw"><input type="checkbox" data-chaos="ml_down"><span></span></label></div>
+        <div class="toggle"><div><b>Bedside hub power loss</b><small>Selected patient's hub goes silent. Status turns UNKNOWN (never "stable"), then a device-offline alert escalates.</small></div><label class="sw"><input type="checkbox" id="deadToggle"><span></span></label></div>
+      </div>
+      <div>
+        <h3 style="margin-bottom:8px">Live reliability counters</h3>
+        <div class="kpis" id="kpis"></div>
+      </div>
+      <div>
+        <h3 style="margin-bottom:8px">AI model card (held-out synthetic cohort)</h3>
+        <div id="modelcard" class="modelcard"></div>
+      </div>
+    </div>
+  </section>
+
+  <main class="grid">
+    <aside class="stack">
+      <div class="panel"><div class="hd"><h3>Homes being monitored</h3><span class="chip" id="wardSummary"></span></div>
+        <div class="bd stack" id="plist" style="gap:10px"></div></div>
+    </aside>
+
+    <section class="panel" id="detail">
+      <div class="phead">
+        <div>
+          <h2 id="pname">Loading…</h2>
+          <div class="sub" id="pcond"></div>
+          <div class="chips" id="pchips"></div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="sbarBtn">📞 Call clinician (SBAR)</button>
+          <button class="btn" id="roundBtn">✅ Log round check</button>
+          <button class="btn" id="dutyBtn">🧑‍⚕️ Check in</button>
+        </div>
+      </div>
+      <div class="statusbar" id="statusbar"></div>
+      <div class="tiles" id="tiles"></div>
+      <div class="chartwrap">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <div class="legend"><span><i style="background:#2563eb"></i>Reading</span><span><i style="background:#0f766e;height:2px"></i>Personal baseline</span><span><i style="background:#e5e7eb;height:8px"></i>NEWS2 normal band</span><span>✕ artifact (ignored)</span></div>
+          <div class="range tabs" id="rangeTabs"><button data-h="12">12 h</button><button data-h="24" class="on">24 h</button><button data-h="48">48 h</button></div>
+        </div>
+        <canvas id="chart"></canvas>
+        <canvas id="chart2" style="height:110px"></canvas>
+        <div class="legend"><span><i style="background:#7c3aed"></i>24 h deterioration risk (AI)</span><span><i style="background:#ea580c"></i>NEWS2</span><span><i style="background:#7c3aed;opacity:.35"></i>Early-warning threshold</span></div>
+      </div>
+      <div class="why">
+        <div class="box"><h4>Why this risk level? - NEWS2 safety floor</h4><div id="n2"></div></div>
+        <div class="box"><h4>What's coming? - 24 h early warning</h4><div id="fc"></div></div>
+      </div>
+      <div class="notes">
+        <div class="box">
+          <h4>Caregiver observation (English / हिन्दी / Hinglish)</h4>
+          <textarea id="noteText" placeholder="What do you notice? e.g. 'saans phool rahi hai, khana nahi khaya'"></textarea>
+          <div class="examples" id="examples"></div>
+          <div style="display:flex;gap:6px"><input id="noteAuthor" placeholder="Your name" style="flex:1"><button class="btn primary" id="noteBtn">Add note</button></div>
+          <div class="understood" id="understood"></div>
+        </div>
+        <div class="box"><h4>Notes & round checks</h4><div class="notelist" id="notelist"></div></div>
+      </div>
+      <div class="sim">
+        <b>Demo simulator:</b>
+        <select id="scnSel"></select><button class="btn small" id="scnBtn">Start deterioration</button>
+        <button class="btn small" id="artBtn">Displace finger sensor</button>
+        <button class="btn small" id="resetBtn">Recover patient</button>
+        <span id="hubinfo"></span>
+      </div>
+    </section>
+
+    <aside class="right stack">
+      <div class="panel">
+        <div class="hd"><h3>Alerts & escalation</h3><div class="tabs" id="alertTabs"><button data-f="open" class="on">Open</button><button data-f="all">All</button></div></div>
+        <div class="bd scroll" id="alerts"></div>
+      </div>
+      <div class="panel">
+        <div class="hd"><h3>Activity</h3><div class="tabs" id="actTabs"><button data-t="msgs" class="on">Notifications</button><button data-t="resp">Caregivers</button><button data-t="audit">Audit log</button></div></div>
+        <div class="bd scroll" id="activity" style="max-height:330px"></div>
+      </div>
+    </aside>
+  </main>
+
+  <div id="modal" class="modal hidden"><div class="card" id="modalCard"></div></div>
+  <div class="toasts" id="toasts"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

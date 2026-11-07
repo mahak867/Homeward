@@ -1,0 +1,39 @@
+{
+ "auroc_sample_level": 0.76,
+ "test_patients": 270,
+ "test_deteriorations": 144,
+ "ml_flagged_before_news2_5": "107/144",
+ "ml_median_lead_h": 10.7,
+ "news2_ge3_flagged_before_news2_5": "118/144",
+ "news2_ge3_median_lead_h": 6.0,
+ "ml_false_early_warnings_per_stable_patient_day": 0.118,
+ "news2_ge3_alerts_per_stable_patient_day": 0.265,
+ "per_scenario": {
+  "acute_hypoxia": {
+   "n": 38,
+   "flagged_early": 6,
+   "median_lead_h": 11.9
+  },
+  "hf_decompensation": {
+   "n": 41,
+   "flagged_early": 41,
+   "median_lead_h": 15.9
+  },
+  "sepsis": {
+   "n": 54,
+   "flagged_early": 52,
+   "median_lead_h": 8.3
+  },
+  "copd_exacerbation": {
+   "n": 8,
+   "flagged_early": 7,
+   "median_lead_h": 9.8
+  },
+  "unprompted": {
+   "n": 3,
+   "flagged_early": 1,
+   "median_lead_h": 12.4
+  }
+ }
+}
+threshold=0.380  trained in 61.0s on 28951 samples
