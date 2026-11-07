@@ -1,6 +1,6 @@
 # HomeWard: a hospital ward that fits inside a bedroom
 
-[![CI](https://github.com/mahak867/smart-health/actions/workflows/ci.yml/badge.svg)](https://github.com/mahak867/smart-health/actions/workflows/ci.yml) ![tests](https://img.shields.io/badge/tests-144%20%2B%2022%20browser-brightgreen) ![python](https://img.shields.io/badge/python-3.10%2B-blue) ![languages](https://img.shields.io/badge/notes-EN%20%C2%B7%20HI%20%C2%B7%20Hinglish%20%C2%B7%20TA%20%C2%B7%20Tanglish-orange)
+[![Live demo](https://img.shields.io/badge/live%20demo-homeward--itmp.onrender.com-0d9488)](https://homeward-itmp.onrender.com/) [![CI](https://github.com/mahak867/smart-health/actions/workflows/ci.yml/badge.svg)](https://github.com/mahak867/smart-health/actions/workflows/ci.yml) ![tests](https://img.shields.io/badge/tests-144%20%2B%2022%20browser-brightgreen) ![python](https://img.shields.io/badge/python-3.10%2B-blue) ![languages](https://img.shields.io/badge/notes-EN%20%C2%B7%20HI%20%C2%B7%20Hinglish%20%C2%B7%20TA%20%C2%B7%20Tanglish-orange)
 
 Built by Team **Smart Health** for **Operation Ward Zero**.
 
@@ -22,6 +22,11 @@ It keeps working when the Wi-Fi, the power, the AI or the bedside hub fails.
  O₂ concentrator,     notes (EN/HI/TA)                           escalation timers     verified attendance, audit
  power, store&forward
 ```
+
+## ▶ Try it live: **https://homeward-itmp.onrender.com/**
+
+Sign in as **Nurse Asha · PIN 1234** (care desk), then press **▶ Guided demo**. Family view: Sunita **1111** · Meena **2222** · Joseph **3333**.
+*Free hosting sleeps when idle, so the first visit may take about a minute to wake up.*
 
 ![HomeWard dashboard](docs/screenshots/dashboard.png)
 
