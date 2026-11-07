@@ -16,7 +16,13 @@
 
   // ---------- caregiver phone (the real /caregiver app in an iframe)
   const phone = document.getElementById("phone"), frame = document.getElementById("phoneFrame");
-  function showPhone(pid) { if (phone.classList.contains("hidden")) { frame.src = `/caregiver?p=${pid}&lang=hi`; phone.classList.remove("hidden"); } }
+  async function showPhone(pid) {
+    if (!phone.classList.contains("hidden")) return;
+    // the phone is Sunita's own device: it signs in as her (family role, sees only Kamla) with a bearer token
+    const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user: "sunita", pin: "1111", cookie: false }) });
+    const tok = r.ok ? (await r.json()).token : "";
+    frame.src = `/caregiver?p=${pid}&lang=hi#token=${tok}`; phone.classList.remove("hidden");
+  }
   function hidePhone() { phone.classList.add("hidden"); }
   const pdoc = () => frame.contentDocument;
   async function phoneType(text) {
@@ -51,7 +57,7 @@
         <div><b>${m.ml_median_lead_h ?? 10.2} h</b><span>median early warning (vs ${m.news2_ge3_median_lead_h ?? 6} h for NEWS2 alone, held-out test patients)</span></div>
         <div><b>${m.ml_false_early_warnings_per_stable_patient_day ?? 0.115}</b><span>false alerts per patient-day (vs ${m.news2_ge3_alerts_per_stable_patient_day ?? 0.265})</span></div>
         <div><b>6</b><span>live failure modes survived: internet, power, duplicates, late data, AI crash, hub loss</span></div>
-        <div><b>29</b><span>automated safety &amp; resilience tests · one-command setup · optional ₹1,000 ESP32 kit</span></div>
+        <div><b>34</b><span>automated safety, resilience &amp; privacy tests · role-based access · optional ₹1,000 ESP32 kit</span></div>
       </div><div class="team">Python · FastAPI · SQLite · NumPy · Server-Sent Events · ESP32 &nbsp;|&nbsp; Thank you!</div></div>`; },
   };
   function showSlide(k) { slideEl.innerHTML = SLIDES[k](); slideEl.classList.remove("hidden"); }
@@ -75,8 +81,8 @@
       text: () => `NEWS2 is only ${P("P-101").news2 ? P("P-101").news2.total : "low"}, so a standard score stays quiet. HomeWard sees breathing, pulse and temperature drifting from her normal and shows exactly why: risk is now ${P("P-101").risk_level || "MEDIUM"}. On held-out test patients this comes ${M().ml_median_lead_h ?? 10} h earlier than NEWS2 alone.`,
       run: async () => { await speed(60); }, spot: "#fcbox", hold: 9 },
     { stage: "Respond", title: "Sunita writes on her phone, in Hinglish",
-      text: "Her daughter-in-law gets the alert in Hindi and writes what she sees in her own words. HomeWard understands Hinglish, including 'nahi', and adds it to the risk reason.",
-      run: async () => { showPhone("P-101"); await sleep(1500); await phoneType("Maa ji ko thand lag rahi hai, khana nahi khaya. Seene mein dard nahi hai."); },
+      text: "Her daughter-in-law gets the alert in Hindi and writes what she sees in her own words. HomeWard understands Hinglish, including 'nahi', and adds it to the risk reason. Privacy by design: Sunita's account can see only her mother-in-law.",
+      run: async () => { await showPhone("P-101"); await sleep(1500); await phoneType("Maa ji ko thand lag rahi hai, khana nahi khaya. Seene mein dard nahi hai."); },
       spot: "#statusbar", hold: 6 },
     { stage: "Alert", title: "Now it's High risk",
       text: "As she worsens, NEWS2 crosses the urgent threshold, confirmed on two consecutive good readings so a single glitch can't cause panic. Critical alerts reach Sunita and the tele-nurse desk at once.",

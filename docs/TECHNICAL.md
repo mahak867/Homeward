@@ -125,6 +125,10 @@ The two systems are complementary. NEWS2 catches the sudden events, and the AI a
 
 ## 8. Safety and privacy
 
+- **Role-based access** (`homeward/auth.py`): the care desk sees every home; a family member or home carer sees only their own patient (state, alerts, notifications, notes, audit). Other patients return 403, and the attempt is audited. Demo/lab controls are care-desk only.
+- PINs are stored as salted PBKDF2 hashes. Sessions are random 256-bit tokens held server-side with a 12 h expiry. Logout destroys the session. Five wrong PINs lock the account for 60 s. The browser uses an HttpOnly, SameSite=Strict cookie, and the phone app a bearer token.
+- The acting user is always taken from the session, never the request body, so the audit trail can't be forged. Opening a record is audited once per session.
+
 - Demo patients are fictional; no real personal data is used or stored.
 - Device ingestion needs a device key and a device↔patient binding check.
 - No diagnosis language anywhere: risk is described as patterns and recommended response levels.
@@ -137,7 +141,7 @@ The two systems are complementary. NEWS2 catches the sudden events, and the AI a
 - Model metrics come from a held-out cohort of simulated patients, not a clinical study. Prospective validation on real, consented data would be required before clinical use.
 - In the training cohort, the note-concern feature was dropped by the sign constraint, because simulated notes carried no independent signal. In the live system notes still act through NEWS2 (new confusion), red flags and the WATCH rule.
 - Notifications (push, WhatsApp, SMS, calls) are simulated as an outbox log.
-- Authentication for human users is simplified to named actors for the demo; production needs role-based login and TLS.
+- Demo accounts use fixed PINs (overridable via environment variables). Production needs TLS, a proper user store and stronger credentials (OTP / SSO).
 - One patient per hub; no multi-tenant isolation; a single SQLite instance.
 
 ## 10. Future improvements

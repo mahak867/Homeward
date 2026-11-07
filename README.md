@@ -23,6 +23,8 @@ It keeps working when the Wi-Fi, the power, the AI or the bedside hub fails.
 
 ![HomeWard dashboard](docs/screenshots/dashboard.png)
 
+🎬 **Demo video:** [docs/demo/HomeWard-demo-video.mp4](docs/demo/HomeWard-demo-video.mp4) (2:39)
+
 ## Run it in 60 seconds
 
 You need Python 3.10 or newer. No Docker, no database server, no API keys and no hardware.
@@ -36,11 +38,11 @@ Then open:
 
 | URL | What |
 |---|---|
-| **http://127.0.0.1:8000** | Care-desk dashboard. Press **▶ Guided demo** for the full story in under 3 minutes. |
-| **http://127.0.0.1:8000/caregiver?lang=hi** | Family-caregiver phone app (Hindi/English) |
+| **http://127.0.0.1:8000** | Care-desk dashboard. Sign in as **Nurse Asha, PIN 1234**, then press **▶ Guided demo** for the full story in under 3 minutes. |
+| **http://127.0.0.1:8000/caregiver?lang=hi** | Family-caregiver phone app (Hindi/English). Sign in as Sunita **1111**, Meena **2222** or Joseph **3333**; each sees only their own patient. |
 | **http://127.0.0.1:8000/docs** | Interactive API documentation |
 
-To run the 29 automated safety and resilience tests:
+To run the 34 automated safety, resilience and privacy tests:
 
 ```bash
 pytest -q
@@ -68,7 +70,7 @@ Docker works too: `docker build -t homeward .`, then `docker run -p 8000:8000 ho
 | Keep working through **connectivity and power** disruptions | The edge hub stores and forwards readings and **sounds an in-room alarm while offline**. During a **power cut** it runs on battery and keeps monitoring. Ingestion is idempotent and order-independent. Old data is never shown as "stable". An **AI circuit breaker** falls back to rules. |
 | Combine vitals, patient context and **multilingual caregiver notes** | Personal baseline, diagnosis-aware scoring (COPD Scale 2), medicines and missed doses, and EN/HI/Hinglish notes. A note saying *"confused"* counts as new confusion in NEWS2. |
 | **Predict deterioration 24–48 h ahead** and escalate | An explainable model forecasts the chance of reaching NEWS2 ≥ 5 within 24 h. On held-out test patients: **median 10.2 h of warning vs 6.0 h for NEWS2 alone**, and **0.115 vs 0.265 false alerts per stable patient-day**. Escalation ladder: caregiver → family → tele-nurse → ambulance. |
-| **Usability, privacy, clinical safety** | Hindi-first caregiver app with big buttons and voice notes. Device keys. Audit log. Built on NEWS2, the published hospital early-warning score. CRITICAL needs two confirmed readings. Exact explanations. No diagnosis language. |
+| **Usability, privacy, clinical safety** | Hindi-first caregiver app with big buttons and voice notes. **Role-based access:** the care desk sees all homes, while a family member sees only their own patient. Hashed PINs, server-side sessions, lockout after 5 wrong PINs, every record opening and denied access audited, and the actor always taken from the session. Device keys. Built on NEWS2, the published hospital early-warning score. CRITICAL needs two confirmed readings. Exact explanations. No diagnosis language. |
 
 ## Why HomeWard stands out
 
@@ -95,10 +97,11 @@ homeward/
   train.py                 cohort generation, training, held-out evaluation
   notes.py                 English / Hindi / Hinglish note understanding
   engine.py                ingestion, risk, Low/Medium/High + reason, alerts, escalation, watchdogs, SBAR
+  auth.py                  role-based access: hashed PINs, sessions, lockout, per-patient scoping
   server.py                FastAPI: device, dashboard, streaming and demo APIs
 web/                       dashboard, guided demo, caregiver app (no build step, works offline)
 hardware/                  ESP32 firmware, serial bridge, virtual ESP32, wiring + BOM
-tests/                     29 pytest checks
+tests/                     34 pytest checks
 scripts/fast_forward.py    prints a 40 h alert timeline in seconds
 docs/                      technical doc, model card, demo script, screenshots
 ```

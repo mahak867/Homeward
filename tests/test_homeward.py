@@ -29,6 +29,7 @@ def world():
     client = TestClient(app)
     hubs.update({p.patient_id: EdgeHub(p, "http://testserver", clock, chaos, seed=i + 1, transport=client)
                  for i, p in enumerate(DEMO_PATIENTS)})
+    assert client.post("/api/login", json={"user": "asha", "pin": "1234"}).status_code == 200  # care-desk session
     for h in hubs.values():
         h.backfill(32)
         h.flush(100)
@@ -335,3 +336,68 @@ def test_verified_attendance_by_bedside_tag(world):
     p = client.get("/api/state").json()["patients"][0]
     assert p["on_duty"]["verified"] is True
     assert client.post("/api/patients/P-101/checkin", json={"caregiver": "x", "on": True, "method": "fake"}).status_code == 422
+
+
+
+# ----------------------------------------------------------------- privacy: role-based access
+def _family(client, user, pin):
+    tok = client.post("/api/login", json={"user": user, "pin": pin, "cookie": False}).json()["token"]
+    return {"Authorization": f"Bearer {tok}"}
+
+
+def test_requires_login(world):
+    clock, chaos, eng, client, hubs = world
+    anon = TestClient(client.app)
+    assert anon.get("/api/state").status_code == 401
+    assert anon.get("/api/patients/P-101/history").status_code == 401
+    assert anon.post("/api/alerts/1/ack", json={}).status_code == 401
+    assert anon.get("/", follow_redirects=False).status_code in (302, 307)   # dashboard -> /login
+    assert anon.get("/api/health").status_code == 200                        # health stays public
+
+
+def test_family_sees_only_their_patient(world):
+    clock, chaos, eng, client, hubs = world
+    h = _family(client, "sunita", "1111")
+    st = client.get("/api/state", headers=h).json()
+    assert [p["id"] for p in st["patients"]] == ["P-101"] and st["user"]["role"] == "family"
+    assert all(a["patient_id"] == "P-101" for a in st["alerts"])
+    assert all(m["patient_id"] == "P-101" for m in st["messages"])
+    assert client.get("/api/patients/P-102/history", headers=h).status_code == 403
+    assert client.get("/api/patients/P-102/sbar", headers=h).status_code == 403
+    assert client.post("/api/patients/P-102/notes", json={"text": "hi"}, headers=h).status_code == 403
+    denied = eng.db.execute("SELECT what FROM audit WHERE what LIKE 'ACCESS DENIED%'").fetchall()
+    assert denied and "Sunita" in denied[0][0]
+    assert client.post("/api/chaos", json={"flag": "ml_down", "value": True}, headers=h).status_code == 403
+    assert client.post("/api/sim", json={"speed": 60}, headers=h).status_code == 403
+
+
+def test_actor_comes_from_session_not_request(world):
+    clock, chaos, eng, client, hubs = world
+    h = _family(client, "meena", "2222")
+    client.post("/api/patients/P-102/notes", json={"author": "Dr. Fake", "text": "seene mein dard"}, headers=h)
+    a = next(a for a in eng.alerts(0) if a["patient_id"] == "P-102" and a["kind"] == "NOTE")
+    r = client.post(f"/api/alerts/{a['id']}/ack", json={"by": "Dr. Fake"}, headers=h).json()
+    assert r["acked_by"] == "Meena (wife)"
+    author = eng.db.execute("SELECT author FROM notes WHERE patient_id='P-102' ORDER BY id DESC LIMIT 1").fetchone()[0]
+    assert author == "Meena (wife)"
+
+
+def test_record_access_is_audited_and_lockout(world):
+    clock, chaos, eng, client, hubs = world
+    h = _family(client, "joseph", "3333")
+    client.get("/api/patients/P-103/history", headers=h)
+    client.get("/api/patients/P-103/history", headers=h)
+    opened = eng.db.execute("SELECT COUNT(*) FROM audit WHERE what LIKE 'Home nurse Joseph opened%'").fetchone()[0]
+    assert opened == 1                                       # once per session, not per refresh
+    for _ in range(5):
+        assert client.post("/api/login", json={"user": "meena", "pin": "0000"}).status_code == 401
+    r = client.post("/api/login", json={"user": "meena", "pin": "2222"})
+    assert r.status_code == 401 and "Too many attempts" in r.json()["detail"]   # locked even with right PIN
+
+
+def test_logout_invalidates_session(world):
+    clock, chaos, eng, client, hubs = world
+    h = _family(client, "sunita", "1111")
+    assert client.get("/api/me", headers=h).status_code == 200
+    client.post("/api/logout", headers=h)
+    assert client.get("/api/me", headers=h).status_code == 401

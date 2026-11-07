@@ -7,12 +7,14 @@ from pathlib import Path
 
 import asyncio
 import json
+from urllib.parse import quote
 
-from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .auth import Auth
 from .core import DEVICE_KEY, SEV_RANK
 from .engine import Engine
 from .physiology import SCENARIOS
@@ -48,23 +50,29 @@ class Batch(BaseModel):
     equipment: dict | None = None
 
 
+class LoginIn(BaseModel):
+    user: str = Field(min_length=1, max_length=40)
+    pin: str = Field(min_length=4, max_length=12)
+    cookie: bool = True  # phone app keeps a bearer token instead, so it can't clobber a desk session
+
+
 class Ack(BaseModel):
-    by: str = Field(min_length=1, max_length=80)
+    by: str = ""  # ignored: the actor is always the logged-in user
 
 
 class Resolve(BaseModel):
-    by: str = Field(min_length=1, max_length=80)
+    by: str = ""
     action: str = Field(min_length=1, max_length=120)
     note: str = Field(default="", max_length=1000)
 
 
 class NoteIn(BaseModel):
-    author: str = Field(min_length=1, max_length=80)
+    author: str = ""
     text: str = Field(min_length=1, max_length=1000)
 
 
 class RoundIn(BaseModel):
-    caregiver: str = Field(min_length=1, max_length=80)
+    caregiver: str = ""
     acvpu: str = Field(default="A", pattern="^[ACVPU]$")
     note: str = Field(default="", max_length=1000)
 
@@ -100,7 +108,7 @@ class SensorIn(BaseModel):
 
 
 class CheckIn(BaseModel):
-    caregiver: str
+    caregiver: str = ""
     on: bool
     method: str = Field(default="app", pattern="^(app|bedside-tag)$")
 
@@ -109,7 +117,60 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
     app = FastAPI(title="Smart Health HomeWard", version="1.0",
                   description="HomeWard home-ward monitoring platform API (prototype decision support).")
     hubs = hubs if hubs is not None else {}
-    app.state.engine, app.state.hubs = engine, hubs
+    auth = Auth()
+    app.state.engine, app.state.hubs, app.state.auth = engine, hubs, auth
+
+    def token_of(request: Request) -> str | None:
+        h = request.headers.get("authorization", "")
+        return h[7:] if h.lower().startswith("bearer ") else request.cookies.get("hw_session")
+
+    def user_dep(request: Request) -> dict:
+        u = auth.resolve(token_of(request))
+        if not u:
+            raise HTTPException(401, "login required")
+        return u
+
+    def desk_dep(user: dict = Depends(user_dep)) -> dict:
+        if user["role"] != "desk":
+            raise HTTPException(403, "care-desk only")
+        return user
+
+    def patient_guard(user: dict, pid: str) -> None:
+        if pid not in engine.patients:
+            raise HTTPException(404)
+        if not auth.can_see(user, pid):
+            with engine.lock:
+                engine._audit(pid, f"ACCESS DENIED: {user['name']} tried to open this record", user["name"])
+                engine.db.commit()
+            raise HTTPException(403, "not your patient")
+
+    # ------------------------------------------------------------ sign-in
+    @app.get("/api/users")
+    def users():
+        return auth.directory()
+
+    @app.post("/api/login")
+    def login(body: LoginIn, response: Response):
+        token, msg = auth.login(body.user, body.pin)
+        if not token:
+            raise HTTPException(401, msg)
+        u = auth.resolve(token)
+        if body.cookie:
+            response.set_cookie("hw_session", token, httponly=True, samesite="strict", max_age=12 * 3600)
+        with engine.lock:
+            engine._audit(None, f"{u['name']} signed in ({u['role']})", u["name"])
+            engine.db.commit()
+        return {"token": token, "user": {k: u[k] for k in ("id", "name", "role", "patients")}}
+
+    @app.post("/api/logout")
+    def logout(request: Request, response: Response):
+        auth.logout(token_of(request))
+        response.delete_cookie("hw_session")
+        return {"ok": True}
+
+    @app.get("/api/me")
+    def me(user: dict = Depends(user_dep)):
+        return {k: user[k] for k in ("id", "name", "role", "patients")}
 
     if run_watchdog:
         def loop():
@@ -167,24 +228,31 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
 
     # ------------------------------------------------------------ dashboard API
     @app.get("/api/state")
-    def state():
-        return build_state()
+    def state(user: dict = Depends(user_dep)):
+        return build_state(user)
 
     @app.get("/api/stream")
-    async def stream(request: Request):
+    async def stream(request: Request, user: dict = Depends(user_dep)):
         """Server-Sent Events: the dashboard gets a push every second (falls back to polling)."""
+        tok = token_of(request)
+
         async def gen():
-            while not await request.is_disconnected():
-                yield f"data: {json.dumps(build_state())}\n\n"
+            while not await request.is_disconnected() and auth.resolve(tok):
+                yield f"data: {json.dumps(build_state(user))}\n\n"
                 await asyncio.sleep(1.0)
         return StreamingResponse(gen(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    def build_state():
+    def build_state(user: dict):
+        """Everything the UI needs - filtered to the patients this user is allowed to see."""
+        desk = user["role"] == "desk"
+        allowed = [pid for pid in engine.patients if auth.can_see(user, pid)]
         with engine.lock:
             pats = []
             open_alerts = engine.alerts(0)
             for pid, p in engine.patients.items():
+                if pid not in allowed:
+                    continue
                 st = engine.state[pid]
                 # home events (fall, red-flag note, missed dose) also lift the patient's displayed status
                 tier, why = st.get("tier", "UNKNOWN"), list(st.get("why", []))
@@ -213,11 +281,15 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
                     "hub": hubs[pid].status() if pid in hubs else None,
                     "spark": [x["prob"] for x in engine.trail[pid][-288::4] if x["prob"] is not None],
                 })
-            msgs = [dict(r) for r in engine.db.execute("SELECT * FROM messages ORDER BY id DESC LIMIT 30").fetchall()]
-            audit = [dict(r) for r in engine.db.execute("SELECT * FROM audit ORDER BY id DESC LIMIT 40").fetchall()]
+            q = ",".join("?" * len(allowed))
+            msgs = [dict(r) for r in engine.db.execute(f"SELECT * FROM messages WHERE patient_id IN ({q}) ORDER BY id DESC LIMIT 30", allowed).fetchall()]
+            audit = [dict(r) for r in engine.db.execute(
+                f"SELECT * FROM audit WHERE patient_id IN ({q})" + (" OR patient_id IS NULL" if desk else "") + " ORDER BY id DESC LIMIT 40", allowed).fetchall()]
             return {
+                "user": {k: user[k] for k in ("id", "name", "role", "patients")},
                 "sim_time": engine.clock.now(), "speed": engine.clock.speed, "paused": engine.clock.paused,
-                "patients": pats, "alerts": engine.alerts(), "messages": msgs, "audit": audit,
+                "patients": pats, "alerts": [a for a in engine.alerts() if a["patient_id"] in allowed],
+                "messages": msgs, "audit": audit,
                 "metrics": engine.m | {"ml_breaker": engine.breaker.state, "ml_fallbacks": engine.breaker.fallback_count,
                                        "ml_failures": engine.breaker.total_failures},
                 "responses": engine.response_stats(), "chaos": engine.chaos.as_dict(),
@@ -226,10 +298,14 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
             }
 
     @app.get("/api/patients/{pid}/history")
-    def history(pid: str, hours: float = 48):
-        if pid not in engine.patients:
-            raise HTTPException(404)
+    def history(pid: str, hours: float = 48, user: dict = Depends(user_dep)):
+        patient_guard(user, pid)
         with engine.lock:
+            seen = user["_session"]["viewed"]
+            if pid not in seen:  # record access once per session
+                seen.add(pid)
+                engine._audit(pid, f"{user['name']} opened {engine.patients[pid].name}'s record", user["name"])
+                engine.db.commit()
             h = engine.history(pid, min(hours, 96))
             h["notes"] = [dict(r) for r in engine.db.execute("SELECT ts, author, text, analysis FROM notes WHERE patient_id=? ORDER BY ts DESC LIMIT 20", (pid,)).fetchall()]
             h["rounds"] = [dict(r) for r in engine.db.execute("SELECT ts, caregiver, acvpu, note FROM rounds WHERE patient_id=? ORDER BY ts DESC LIMIT 20", (pid,)).fetchall()]
@@ -238,49 +314,47 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
             return h
 
     @app.get("/api/patients/{pid}/sbar", response_class=PlainTextResponse)
-    def sbar(pid: str):
-        if pid not in engine.patients:
-            raise HTTPException(404)
+    def sbar(pid: str, user: dict = Depends(user_dep)):
+        patient_guard(user, pid)
         with engine.lock:
             return engine.sbar(pid)
 
-    @app.post("/api/alerts/{aid}/ack")
-    def ack(aid: int, body: Ack):
-        try:
-            return engine.ack(aid, body.by)
-        except KeyError:
+    def alert_guard(user, aid):
+        row = engine.db.execute("SELECT patient_id FROM alerts WHERE id=?", (aid,)).fetchone()
+        if not row:
             raise HTTPException(404)
+        patient_guard(user, row[0])
+
+    @app.post("/api/alerts/{aid}/ack")
+    def ack(aid: int, body: Ack, user: dict = Depends(user_dep)):
+        alert_guard(user, aid)
+        return engine.ack(aid, user["name"])
 
     @app.post("/api/alerts/{aid}/resolve")
-    def resolve(aid: int, body: Resolve):
-        try:
-            return engine.resolve(aid, body.by, body.action, body.note)
-        except KeyError:
-            raise HTTPException(404)
+    def resolve(aid: int, body: Resolve, user: dict = Depends(user_dep)):
+        alert_guard(user, aid)
+        return engine.resolve(aid, user["name"], body.action, body.note)
 
     @app.post("/api/patients/{pid}/notes")
-    def note(pid: str, body: NoteIn):
-        if pid not in engine.patients:
-            raise HTTPException(404)
-        return engine.add_note(pid, body.author, body.text)
+    def note(pid: str, body: NoteIn, user: dict = Depends(user_dep)):
+        patient_guard(user, pid)
+        return engine.add_note(pid, user["name"], body.text)
 
     @app.post("/api/patients/{pid}/rounds")
-    def round_(pid: str, body: RoundIn):
-        if pid not in engine.patients:
-            raise HTTPException(404)
-        engine.log_round(pid, body.caregiver, body.acvpu, body.note)
+    def round_(pid: str, body: RoundIn, user: dict = Depends(user_dep)):
+        patient_guard(user, pid)
+        engine.log_round(pid, user["name"], body.acvpu, body.note)
         return {"ok": True}
 
     @app.post("/api/patients/{pid}/checkin")
-    def checkin(pid: str, body: CheckIn):
-        if pid not in engine.patients:
-            raise HTTPException(404)
-        engine.check_in(pid, body.caregiver, body.on, body.method)
+    def checkin(pid: str, body: CheckIn, user: dict = Depends(user_dep)):
+        patient_guard(user, pid)
+        engine.check_in(pid, user["name"], body.on, body.method)
         return {"ok": True}
 
     # ------------------------------------------------------------ demo / resilience lab
     @app.post("/api/chaos")
-    def chaos(body: ChaosIn):
+    def chaos(body: ChaosIn, user: dict = Depends(desk_dep)):
         c = engine.chaos
         if body.flag == "device_dead":
             if not body.patient_id:
@@ -296,7 +370,7 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
         return c.as_dict()
 
     @app.post("/api/sim")
-    def sim(body: SimIn):
+    def sim(body: SimIn, user: dict = Depends(desk_dep)):
         if body.speed is not None:
             engine.clock.set_speed(body.speed)
         if body.paused is not None:
@@ -335,8 +409,14 @@ def create_app(engine: Engine, hubs: dict | None = None, run_watchdog: bool = Tr
                 "patients": len(engine.patients)}
 
     @app.get("/")
-    def index():
+    def index(request: Request):
+        if not auth.resolve(request.cookies.get("hw_session")):
+            return RedirectResponse("/login" + (f"?next={quote(request.url.query)}" if request.url.query else ""))
         return FileResponse(WEB / "index.html")
+
+    @app.get("/login")
+    def login_page():
+        return FileResponse(WEB / "login.html")
 
     @app.get("/caregiver")
     def caregiver():

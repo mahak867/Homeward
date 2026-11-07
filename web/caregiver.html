@@ -68,16 +68,45 @@
   const qs = new URLSearchParams(location.search);
   let lang = qs.get("lang") || "en", pid = qs.get("p") || "P-101", S = null, lastNote = null;
   const t = (k, n) => (T[lang][k] || k).replaceAll("{n}", n || "");
-  const api = async (p, b) => { const r = await fetch(p, b ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) } : {}); if (!r.ok) throw 0; return r.json(); };
+  // own bearer token (from the URL hash, or saved after signing in on this phone)
+  const hashTok = (location.hash.match(/token=([^&]+)/) || [])[1];
+  let TOKEN = hashTok || (() => { try { return localStorage.getItem("hw.cg.token"); } catch { return null; } })();
+  if (hashTok) history.replaceState(null, "", location.pathname + location.search);
+  const api = async (p, b) => {
+    const h = { "Content-Type": "application/json" }; if (TOKEN) h.Authorization = `Bearer ${TOKEN}`;
+    const r = await fetch(p, b ? { method: "POST", headers: h, body: JSON.stringify(b) } : { headers: h });
+    if (r.status === 401) { showLogin(); throw 0; }
+    if (!r.ok) throw 0; return r.json();
+  };
+  let loginShown = false;
+  async function showLogin() {
+    if (loginShown) return; loginShown = true;
+    const users = await (await fetch("/api/users")).json();
+    document.getElementById("app").innerHTML = `<div class="card"><h3>${lang === "hi" ? "साइन इन करें" : "Sign in"}</h3>
+      <div class="acv">${users.map((u) => `<button data-u="${u.id}">${u.role === "desk" ? "🩺" : "👪"} ${esc(u.name)}</button>`).join("")}</div>
+      <input id="pin" type="password" inputmode="numeric" placeholder="PIN" style="width:100%;margin-top:10px;padding:12px;border-radius:12px;border:1px solid var(--line);font-size:18px">
+      <button class="bigbtn" id="go" style="width:100%;margin-top:8px">${lang === "hi" ? "आगे बढ़ें" : "Continue"}</button><div id="lerr" class="muted" style="color:#b91c1c;margin-top:6px"></div>
+      <div class="muted" style="margin-top:10px">Demo: Sunita 1111 · Meena 2222 · Joseph 3333</div></div>`;
+    let who = users.find((u) => u.role === "family").id;
+    document.querySelectorAll("[data-u]").forEach((b) => { b.onclick = () => { who = b.dataset.u; document.querySelectorAll("[data-u]").forEach((x) => x.style.borderColor = x === b ? "#4f46e5" : ""); }; });
+    document.getElementById("go").onclick = async () => {
+      const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user: who, pin: document.getElementById("pin").value, cookie: false }) });
+      if (!r.ok) { document.getElementById("lerr").textContent = ((await r.json().catch(() => ({}))).detail) || "Sign-in failed"; return; }
+      const d = await r.json(); TOKEN = d.token; try { localStorage.setItem("hw.cg.token", TOKEN); } catch {}
+      pid = d.user.patients === "*" ? pid : d.user.patients[0]; loginShown = false; document.getElementById("who").innerHTML = ""; S = null; poll1();
+    };
+  }
+  async function poll1() { try { S = await api("/api/state"); render(true); } catch {} }
   const toast = (m) => { const d = document.createElement("div"); d.className = "toast"; d.textContent = m; document.body.appendChild(d); setTimeout(() => d.remove(), 2500); };
   document.getElementById("lang").onclick = () => { lang = lang === "en" ? "hi" : "en"; document.getElementById("lang").textContent = lang === "en" ? "हिन्दी" : "English"; render(true); };
   document.getElementById("who").onchange = (e) => { pid = e.target.value; render(true); };
 
-  async function poll() { try { S = await api("/api/state"); render(); } catch {} setTimeout(poll, 1500); }
+  async function poll() { if (!loginShown) { try { S = await api("/api/state"); render(); } catch {} } setTimeout(poll, 1500); }
   let lastKey = "";
   function render(force) {
     if (!S) return;
     const who = document.getElementById("who");
+    if (!S.patients.some((x) => x.id === pid)) pid = S.patients[0].id;
     if (!who.options.length) { who.innerHTML = S.patients.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join(""); who.value = pid; }
     const p = S.patients.find((x) => x.id === pid); const first = p.name.split(" ")[0] + (lang === "hi" ? " जी" : "");
     const tier = ["STALE", "OFFLINE", "NO_DATA"].includes(p.data_state) ? "UNKNOWN" : p.tier;

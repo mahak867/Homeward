@@ -19,7 +19,7 @@ const VITALS = {
 };
 const RISK_TEXT = { STABLE: "Low risk", WATCH: "Medium risk", HIGH: "High risk", CRITICAL: "High risk", UNKNOWN: "Unknown" };
 const operator = () => store.get("hw.operator", "Care desk - Nurse Asha");
-const initials = (n) => n.split(" ").map((x) => x[0]).slice(0, 2).join("");
+const initials = (n) => n.replace(/\(.*?\)/g, "").split(" ").filter((w) => /^[A-Z]/.test(w)).map((w) => w[0]).slice(0, 2).join("");
 const fmtTime = (ts, day = false) => { const d = new Date(ts * 1000); const t = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); return day ? d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }) + " · " + t : t; };
 const pct = (p) => `${Math.min(99, Math.max(1, Math.round(p * 100)))}%`;
 const ago = (realTs) => { const s = Math.max(0, Date.now() / 1000 - realTs); return s < 60 ? `${Math.round(s)}s ago` : `${Math.round(s / 60)}m ago`; };
@@ -28,6 +28,7 @@ const patient = (id = sel) => S && S.patients.find((x) => x.id === id);
 
 async function api(path, body) {
   const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  if (r.status === 401) { location.href = "/login"; throw new Error("signed out"); }
   if (!r.ok) throw new Error(await r.text());
   return (r.headers.get("content-type") || "").includes("json") ? r.json() : r.text();
 }
@@ -53,8 +54,18 @@ async function loadHistory() { try { H = await api(`/api/patients/${sel}/history
 function historyLoop() { loadHistory().finally(() => setTimeout(historyLoop, 2500)); }
 
 /* ------------------------------------------------------------ render */
+let roleApplied = false;
+function applyRole() {
+  if (roleApplied || !S.user) return; roleApplied = true;
+  $("#userChip").textContent = `👤 ${S.user.name}`;
+  if (S.user.role !== "desk") {  // family: own patient only, no demo / lab controls
+    ["#labBtn", "#speedSeg", "#tourBtn", ".simbar", "#lab", "#pipeline"].forEach((q) => { const el = $(q); if (el) el.classList.add("hidden"); });
+    if (!S.patients.some((p) => p.id === sel) && S.patients[0]) select(S.patients[0].id);
+  }
+}
 function render() {
   if (!S) return;
+  applyRole();
   $("#clock").textContent = fmtTime(S.sim_time, true);
   $$("#speedSeg button[data-speed]").forEach((b) => b.classList.toggle("on", !S.paused && +b.dataset.speed === S.speed));
   $("#pause").textContent = S.paused ? "Resume" : "Pause";
@@ -477,6 +488,8 @@ function toast(msg, sev) {
   setTimeout(() => { d.classList.add("out"); setTimeout(() => d.remove(), 200); }, 5000);
   while ($("#toasts").children.length > 4) $("#toasts").firstChild.remove();
 }
+
+$("#logoutBtn").onclick = async () => { await fetch("/api/logout", { method: "POST" }); try { localStorage.removeItem("hw.cg.token"); } catch {} location.href = "/login"; };
 
 // small API for the guided tour
 window.HW = { api, poll1, select, setTab, toggleLab, openSBAR, closeModal, addNote, toast, loadHistory, state: () => S, patient };

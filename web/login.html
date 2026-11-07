@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · HomeWard</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    body { min-height: 100vh; display: grid; place-items: center; padding: 16px;
+      background: radial-gradient(900px 500px at 15% 0%, color-mix(in srgb, var(--brand) 14%, transparent), transparent 60%), radial-gradient(800px 500px at 100% 100%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 60%), var(--bg); }
+    .login { width: min(460px, 100%); padding: 26px; }
+    .login h1 { margin: 14px 0 2px; font-size: 22px; letter-spacing: -.02em; }
+    .who { display: grid; gap: 8px; margin: 18px 0 14px; }
+    .who button { display: flex; align-items: center; gap: 12px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface);
+      transition: transform 160ms var(--ease-out), border-color 150ms ease, box-shadow 150ms ease; }
+    .who button:active { transform: scale(0.98); }
+    .who button.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .who small { display: block; color: var(--muted); font-size: 12px; }
+    .err { color: var(--critical); font-size: 13px; min-height: 18px; margin-top: 8px; }
+    .demo { margin-top: 16px; font-size: 12px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+    .shake { animation: shake 300ms var(--ease-out); }
+    @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+  </style>
+</head>
+<body>
+  <div class="card login" id="card">
+    <div class="brand"><div class="logo"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/><path d="M8 15h2l1.2-2.5L13 17l1.2-2H16"/></svg></div><div><b>HomeWard</b><small>by Smart Health</small></div></div>
+    <h1>Sign in</h1>
+    <div class="note" style="margin:0">Care-desk staff see every home. Family members see only their own patient.</div>
+    <div class="who" id="who"></div>
+    <form id="f" style="display:flex;gap:8px">
+      <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="PIN" maxlength="12" style="flex:1">
+      <button class="btn primary" type="submit">Sign in</button>
+    </form>
+    <div class="err" id="err"></div>
+    <div class="demo"><b>Demo accounts</b> · Nurse Asha (care desk) <b>1234</b> · Sunita <b>1111</b> · Meena <b>2222</b> · Joseph <b>3333</b></div>
+  </div>
+  <script>
+    const ROLE = { desk: "Care desk · all homes", family: "Family / carer · own patient only" };
+    const initials = (n) => n.replace(/\(.*?\)/g, "").split(" ").filter((w) => /^[A-Z]/.test(w)).map((w) => w[0]).slice(0, 2).join("");
+    let chosen = null;
+    try { if (localStorage.getItem("hw.theme")) document.documentElement.dataset.theme = localStorage.getItem("hw.theme"); } catch {}
+    fetch("/api/users").then((r) => r.json()).then((users) => {
+      document.getElementById("who").innerHTML = users.map((u) => `<button type="button" data-id="${u.id}" data-role="${u.role}"><div class="avatar t-${u.role === "desk" ? "STABLE" : "WATCH"}">${initials(u.name)}</div><div><b>${u.name}</b><small>${ROLE[u.role]}</small></div></button>`).join("");
+      document.querySelectorAll(".who button").forEach((b) => b.onclick = () => { chosen = b.dataset; document.querySelectorAll(".who button").forEach((x) => x.classList.toggle("on", x === b)); document.getElementById("pin").focus(); });
+      document.querySelector(".who button").click();
+    });
+    document.getElementById("f").onsubmit = async (e) => {
+      e.preventDefault();
+      const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user: chosen.id, pin: document.getElementById("pin").value }) });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); document.getElementById("err").textContent = d.detail || "Sign-in failed"; const c = document.getElementById("card"); c.classList.remove("shake"); void c.offsetWidth; c.classList.add("shake"); return; }
+      const d = await r.json();
+      try { localStorage.setItem("hw.cg.token", d.token); } catch {}
+      const next = new URLSearchParams(location.search).get("next");
+      location.href = d.user.role === "desk" ? "/" + (next ? "?" + next : "") : "/caregiver?p=" + d.user.patients[0];
+    };
+  </script>
+</body>
+</html>
