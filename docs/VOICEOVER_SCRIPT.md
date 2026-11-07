@@ -1,4 +1,4 @@
-# Voice-over script for `docs/demo/HomeWard-demo-video.mp4` (2:39)
+# Voice-over script for `docs/demo/HomeWard-demo-video.mp4` (2:40)
 
 The video has no captions and no audio. Read each line starting at its timestamp, at a calm pace. Every line fits its slot with a little room to spare.
 

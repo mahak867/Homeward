@@ -49,7 +49,7 @@ HomeWard is designed around those three failures.
 - **Ward overview**: one card per home, with tier, NEWS2, 24 h risk, SpO₂, RR and device state.
 - **Patient view**: live vital tiles with NEWS2 points and the personal baseline; 12/24/48 h charts with the normal band, baseline line, ignored artifacts (✕) and late-arriving data (●); a NEWS2 and AI-risk trend chart.
 - **"Why?" panels**: the full NEWS2 table, the response recommendation and the consciousness source; the AI risk gauge with the factors pushing risk up and reassuring factors, written in plain language.
-- **Caregiver notes**: EN/HI/Hinglish lexicon with negation. Red flags (chest pain, fall, unresponsive) raise immediate alerts. A note describing new confusion sets ACVPU = C (3 NEWS2 points).
+- **Caregiver notes**: English, Hindi, Hinglish, Tamil and Tanglish lexicon, with negation before ("no fever") and after ("bukhar nahi", "kaaichal illai") the term. The detected language is shown back to the writer. Red flags (chest pain, fall, unresponsive) raise immediate alerts. A note describing new confusion sets ACVPU = C (3 NEWS2 points).
 - **Alerts**: typed, de-duplicated and severity-upgraded. The escalation ladder shows a live countdown. CRITICAL alerts notify the caregiver and the care desk in parallel. Each alert carries a recommended next step.
 - **Response tracking**: acknowledge/resolve with action and note (the note feeds back into the patient's context), median acknowledgement time, on-duty check-in, overdue round alerts and an immutable audit log.
 - **SBAR generator**: a structured phone handover built from live data.
@@ -147,3 +147,14 @@ The two systems are complementary. NEWS2 catches the sudden events, and the AI a
 ## 10. Future improvements
 
 BLE BP cuff and smart scale via a Raspberry Pi gateway; FHIR export to hospital EHRs; WhatsApp Business API delivery; GRU/temporal models trained on real home data, with calibration monitoring and drift alerts; Indic speech-to-text for notes beyond Hindi; role-based auth; PostgreSQL/Timescale; on-device model inference; medication adherence (smart pill box).
+
+
+## 11. Testing and quality
+
+| Suite | What it covers | How to run |
+|---|---|---|
+| `tests/test_units.py` (107) | Every NEWS2 threshold boundary (RCP 2017), Scale 2 on air vs oxygen, bands; notes in 5 languages incl. negation and red flags; quality gate; model sign constraints, exact explanations, monotonic risk; circuit breaker states; feature maths; PIN hashing and session expiry | `pytest -q` |
+| `tests/test_homeward.py` (34) | Full pipeline through real HTTP: duplicate storms, late data, outages + in-room alarm, dead hub, AI crash, artifacts, escalation ladder, early warning before NEWS2, IoT (pill box, fall, O₂ machine, power cut), hardware endpoints, Low/Medium/High reasons, verified attendance, role-based access | `pytest -q` |
+| `tests/e2e/browser.e2e.cjs` (22 checks) | Real Chromium on the real app: login and roles, dashboard rendering, Tamil note, early warning in the UI, acknowledge, SBAR, Resilience Lab outage/recovery, AI fallback, dark mode, guided demo, scoped family view, Hindi phone app, mobile layout, zero JS errors | `node tests/e2e/browser.e2e.cjs` (also via pytest) |
+
+GitHub Actions (`.github/workflows/ci.yml`) runs all three suites on every push.

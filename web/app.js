@@ -395,7 +395,7 @@ const hideTip = () => { $("#tip").classList.remove("on"); $("#cross").classList.
 $("#chart").addEventListener("mouseleave", hideTip);
 
 /* ------------------------------------------------------------ notes + timeline */
-const EXAMPLES = ["Saans phool rahi hai, khana nahi khaya", "She seems confused today", "बुखार है और कमजोरी", "Ankles more swollen, less urine", "No chest pain, feeling better", "Papa gir gaye bathroom mein"];
+const EXAMPLES = ["Saans phool rahi hai, khana nahi khaya", "Amma ku kaaichal illai, aanaa moochu thinaral irukku", "She seems confused today", "बुखार है और कमजोरी", "நெஞ்சு வலி இருக்கு", "Ankles more swollen, less urine", "No chest pain, feeling better", "Papa gir gaye bathroom mein"];
 function renderNotes() {
   if (!H) return;
   const items = [...(H.notes || []).map((n) => ({ ...n, kind: "note" })), ...(H.rounds || []).map((r) => ({ ...r, kind: "round" }))].sort((a, b) => b.ts - a.ts);
@@ -450,7 +450,7 @@ $("#roundBtn").onclick = () => {
 $("#dutyBtn").onclick = async () => { const p = patient(); await api(`/api/patients/${sel}/checkin`, { caregiver: p.contacts[0].name, on: !p.on_duty }); poll1(); };
 async function addNote(text, author) {
   const a = await api(`/api/patients/${sel}/notes`, { author: author || $("#noteAuthor").value.trim() || patient().contacts[0].name, text });
-  $("#understood").innerHTML = `<b>Understood:</b> ${(a.signals || []).filter((s) => s.weight > 0).map((s) => `<span class="chip ${s.red_flag ? "red" : "amber"}">${esc(s.label)}</span>`).join(" ") || "no concerning signs"}${(a.negated || []).length ? ` · <b>ruled out:</b> ${a.negated.map((n) => esc(n.label)).join(", ")}` : ""}${a.suggests_new_confusion ? ` · <b>counts as new confusion in NEWS2</b>` : ""}`;
+  $("#understood").innerHTML = `<b>Understood</b>${a.languages ? ` <span class="chip">${esc(a.languages.join(" + "))}</span>` : ""}: ${(a.signals || []).filter((s) => s.weight > 0).map((s) => `<span class="chip ${s.red_flag ? "red" : "amber"}">${esc(s.label)}</span>`).join(" ") || "no concerning signs"}${(a.negated || []).length ? ` · <b>ruled out:</b> ${a.negated.map((n) => esc(n.label)).join(", ")}` : ""}${a.suggests_new_confusion ? ` · <b>counts as new confusion in NEWS2</b>` : ""}`;
   loadHistory(); poll1(); return a;
 }
 $("#noteBtn").onclick = async () => { const t = $("#noteText").value.trim(); if (!t) return; await addNote(t); $("#noteText").value = ""; };

@@ -40,7 +40,7 @@ def main():
     from homeward.physiology import DEMO_PATIENTS
     from homeward.server import create_app
 
-    data = ROOT / "data"
+    data = Path(os.environ.get("HOMEWARD_DATA", ROOT / "data"))
     data.mkdir(exist_ok=True)
     for f in data.glob("*.db*"):  # synthetic demo data is regenerated on every run for a clean story
         f.unlink()

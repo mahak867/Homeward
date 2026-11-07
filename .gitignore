@@ -5,3 +5,4 @@ data/*.db-*
 .pytest_cache/
 .venv/
 *.zip
+tests/e2e/last-run.json

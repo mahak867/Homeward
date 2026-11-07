@@ -57,8 +57,8 @@
         <div><b>${m.ml_median_lead_h ?? 10.2} h</b><span>median early warning (vs ${m.news2_ge3_median_lead_h ?? 6} h for NEWS2 alone, held-out test patients)</span></div>
         <div><b>${m.ml_false_early_warnings_per_stable_patient_day ?? 0.115}</b><span>false alerts per patient-day (vs ${m.news2_ge3_alerts_per_stable_patient_day ?? 0.265})</span></div>
         <div><b>6</b><span>live failure modes survived: internet, power, duplicates, late data, AI crash, hub loss</span></div>
-        <div><b>34</b><span>automated safety, resilience &amp; privacy tests · role-based access · optional ₹1,000 ESP32 kit</span></div>
-      </div><div class="team">Python · FastAPI · SQLite · NumPy · Server-Sent Events · ESP32 &nbsp;|&nbsp; Thank you!</div></div>`; },
+        <div><b>163</b><span>automated checks (141 tests + 22 real-browser) · CI on every push · role-based access · optional ₹1,000 ESP32 kit</span></div>
+      </div><div class="team">Notes in English · हिन्दी · Hinglish · தமிழ் · Tanglish &nbsp;|&nbsp; Python · FastAPI · SQLite · NumPy · SSE · ESP32 &nbsp;|&nbsp; Thank you!</div></div>`; },
   };
   function showSlide(k) { slideEl.innerHTML = SLIDES[k](); slideEl.classList.remove("hidden"); }
   function hideSlide() { slideEl.classList.add("hidden"); }
@@ -172,6 +172,7 @@
   function stop() { token++; running = false; spot(null); el.classList.add("hidden"); hideSlide(); hidePhone(); i = -1; HW.closeModal(); window.__tourDone = true; }
   document.getElementById("tourBtn").onclick = () => (running ? stop() : start());
   slideEl.onclick = () => running && go(i + 1);
+  document.addEventListener("keydown", (e) => { if (!running) return; if (e.key === "Escape") stop(); else if (e.key === "ArrowRight") go(i + 1); });
   if (QS.get("tour") === "1") setTimeout(start, 1500);
   window.HWTour = { start, stop };
 })();
