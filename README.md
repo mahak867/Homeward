@@ -1,6 +1,6 @@
 # HomeWard: a hospital ward that fits inside a bedroom
 
-[![Live demo](https://img.shields.io/badge/live%20demo-homeward--itmp.onrender.com-0d9488)](https://homeward-itmp.onrender.com/) [![CI](https://github.com/mahak867/smart-health/actions/workflows/ci.yml/badge.svg)](https://github.com/mahak867/smart-health/actions/workflows/ci.yml) ![tests](https://img.shields.io/badge/tests-144%20%2B%2022%20browser-brightgreen) ![python](https://img.shields.io/badge/python-3.10%2B-blue) ![languages](https://img.shields.io/badge/notes-EN%20%C2%B7%20HI%20%C2%B7%20Hinglish%20%C2%B7%20TA%20%C2%B7%20Tanglish-orange)
+[![Live demo](https://img.shields.io/badge/live%20demo-homeward--itmp.onrender.com-0d9488)](https://homeward-itmp.onrender.com/) [![CI](https://github.com/mahak867/smart-health/actions/workflows/ci.yml/badge.svg)](https://github.com/mahak867/smart-health/actions/workflows/ci.yml) ![tests](https://img.shields.io/badge/tests-155%20%2B%2022%20browser-brightgreen) ![python](https://img.shields.io/badge/python-3.10%2B-blue) ![languages](https://img.shields.io/badge/notes-EN%20%C2%B7%20HI%20%C2%B7%20Hinglish%20%C2%B7%20TA%20%C2%B7%20Tanglish-orange)
 
 Built by Team **Smart Health** for **Operation Ward Zero**.
 
@@ -49,7 +49,7 @@ Then open:
 | **http://127.0.0.1:8000/caregiver?lang=hi** | Family-caregiver phone app (Hindi/English). Sign in as Sunita **1111**, Meena **2222** or Joseph **3333**; each sees only their own patient. |
 | **http://127.0.0.1:8000/docs** | Interactive API documentation |
 
-To run the 144 automated safety, resilience and privacy tests:
+To run the 155 automated safety, resilience and privacy tests:
 
 ```bash
 pytest -q
@@ -78,7 +78,7 @@ Docker works too: `docker build -t homeward .`, then `docker run -p 8000:8000 ho
 | **Verify caregiver attendance** and activity | Check-in by scanning a **bedside tag** (verified presence). Scheduled round checks raise an alert if overdue. Acknowledgement times are tracked per responder. The bedside button also counts as proof of presence. |
 | Keep working through **connectivity and power** disruptions | The edge hub stores and forwards readings and **sounds an in-room alarm while offline**. During a **power cut** it runs on battery and keeps monitoring. Ingestion is idempotent and order-independent. Old data is never shown as "stable". An **AI circuit breaker** falls back to rules. |
 | Combine vitals, patient context and **multilingual caregiver notes** | Personal baseline, diagnosis-aware scoring (COPD Scale 2), medicines and missed doses, and notes in English, Hindi, Hinglish, Tamil and Tanglish. A note saying *"confused"* counts as new confusion in NEWS2. |
-| **Predict deterioration 24–48 h ahead** and escalate | An explainable model forecasts the chance of reaching NEWS2 ≥ 5 within 24 h. On held-out test patients: **median 10.2 h of warning vs 6.0 h for NEWS2 alone**, and **0.115 vs 0.265 false alerts per stable patient-day**. Escalation ladder: caregiver → family → tele-nurse → ambulance. |
+| **Predict deterioration 24–48 h ahead** and escalate | An explainable model forecasts the chance of reaching NEWS2 ≥ 5 within 24 h. On held-out (simulated) test patients the AI warns a median **10.2 h before NEWS2 reaches the urgent level**, versus **6.0 h for a NEWS2 ≥ 3 trigger**: about **4 h earlier**, with **fewer than half the false alerts** (0.115 vs 0.265 per stable patient-day). Escalation ladder: caregiver → family → tele-nurse → ambulance. |
 | **Usability, privacy, clinical safety** | Hindi-first caregiver app with big buttons and voice notes. **Role-based access:** the care desk sees all homes, while a family member sees only their own patient. Hashed PINs, server-side sessions, lockout after 5 wrong PINs, every record opening and denied access audited, and the actor always taken from the session. Device keys. Built on NEWS2, the published hospital early-warning score. CRITICAL needs two confirmed readings. Exact explanations. No diagnosis language. |
 
 ## Why HomeWard stands out
@@ -110,12 +110,12 @@ homeward/
   server.py                FastAPI: device, dashboard, streaming and demo APIs
 web/                       dashboard, guided demo, caregiver app (no build step, works offline)
 hardware/                  ESP32 firmware, serial bridge, virtual ESP32, wiring + BOM
-tests/                     144 pytest checks + 22-check real-browser E2E suite (tests/e2e)
+tests/                     155 pytest checks + 22-check real-browser E2E suite (tests/e2e)
 scripts/fast_forward.py    prints a 40 h alert timeline in seconds
 docs/                      technical doc, model card, demo script, screenshots
 ```
 
-**Quality:** 144 unit / integration / resilience / privacy tests, including every NEWS2 threshold boundary; 22 real-browser end-to-end checks; CI on every push.
+**Quality:** 155 unit / integration / resilience / privacy tests, including every NEWS2 threshold boundary; 22 real-browser end-to-end checks; CI on every push.
 
 **Stack:** Python · FastAPI · SQLite (WAL) · NumPy · httpx · Server-Sent Events · vanilla HTML/CSS/JS with canvas charts · pytest · Playwright · Arduino (ESP32).
 

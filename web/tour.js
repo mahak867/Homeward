@@ -54,10 +54,10 @@
       </div></div>`,
     outro: () => { const m = M(); return `<div class="inner"><div class="kicker">HomeWard · Team Smart Health</div><h1>Earlier warnings. Fewer false alarms. <em>Never silent.</em></h1>
       <div class="stats">
-        <div><b>${m.ml_median_lead_h ?? 10.2} h</b><span>median early warning (vs ${m.news2_ge3_median_lead_h ?? 6} h for NEWS2 alone, held-out test patients)</span></div>
+        <div><b>≈${Math.round((m.ml_median_lead_h ?? 10.2) - (m.news2_ge3_median_lead_h ?? 6))} h</b><span>earlier than a NEWS2 ≥ 3 trigger (${m.ml_median_lead_h ?? 10.2} h vs ${m.news2_ge3_median_lead_h ?? 6} h before NEWS2 turns urgent, held-out simulated patients)</span></div>
         <div><b>${m.ml_false_early_warnings_per_stable_patient_day ?? 0.115}</b><span>false alerts per patient-day (vs ${m.news2_ge3_alerts_per_stable_patient_day ?? 0.265})</span></div>
         <div><b>6</b><span>live failure modes survived: internet, power, duplicates, late data, AI crash, hub loss</span></div>
-        <div><b>163</b><span>automated checks (141 tests + 22 real-browser) · CI on every push · role-based access · optional ₹1,000 ESP32 kit</span></div>
+        <div><b>177</b><span>automated checks (155 tests + 22 real-browser) · CI on every push · role-based access · optional ₹1,000 ESP32 kit</span></div>
       </div><div class="team">Notes in English · हिन्दी · Hinglish · தமிழ் · Tanglish &nbsp;|&nbsp; Python · FastAPI · SQLite · NumPy · SSE · ESP32 &nbsp;|&nbsp; Thank you!</div></div>`; },
   };
   function showSlide(k) { slideEl.innerHTML = SLIDES[k](); slideEl.classList.remove("hidden"); }
@@ -78,7 +78,7 @@
       run: async () => { HW.select("P-101"); await sim({ patient_id: "P-101", scenario: "sepsis" }); await speed(1800); },
       spot: "#chartwrap", until: () => P("P-101").forecast && P("P-101").forecast.early_warning, timeout: 90 },
     { stage: "Predict", title: "Early warning, before any score turns red",
-      text: () => `NEWS2 is only ${P("P-101").news2 ? P("P-101").news2.total : "low"}, so a standard score stays quiet. HomeWard sees breathing, pulse and temperature drifting from her normal and shows exactly why: risk is now ${P("P-101").risk_level || "MEDIUM"}. On held-out test patients this comes ${M().ml_median_lead_h ?? 10} h earlier than NEWS2 alone.`,
+      text: () => `NEWS2 is only ${P("P-101").news2 ? P("P-101").news2.total : "low"}, so a standard score stays quiet. HomeWard sees breathing, pulse and temperature drifting from her normal and shows exactly why: risk is now ${P("P-101").risk_level || "MEDIUM"}. On held-out test patients this warning comes about ${Math.round((M().ml_median_lead_h ?? 10.2) - (M().news2_ge3_median_lead_h ?? 6))} hours earlier than a NEWS2 ≥ 3 trigger, with fewer false alarms.`,
       run: async () => { await speed(60); }, spot: "#fcbox", hold: 9 },
     { stage: "Respond", title: "Sunita writes on her phone, in Hinglish",
       text: "Her daughter-in-law gets the alert in Hindi and writes what she sees in her own words. HomeWard understands Hinglish, including 'nahi', and adds it to the risk reason. Privacy by design: Sunita's account can see only her mother-in-law.",

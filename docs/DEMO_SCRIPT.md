@@ -16,7 +16,7 @@ The easiest way to record is the built-in **▶ Guided demo**. It drives the liv
 | 1 | Sense | Ward of 3 homes with live hubs | "HomeWard turns a bedroom into a ward: a bedside hub streams vitals plus pill-box, bed, motion and oxygen-equipment data." |
 | 2 | Understand | Rajesh (COPD), SpO₂ 89% with "usual 90" | "Normal is personal. NEWS2 Scale 2 and a 24-hour personal baseline mean no false alarms for his prescribed target." |
 | 3 | Predict | Kamla's infection starts; the purple risk line climbs | "A slow infection begins. The AI risk rises while NEWS2 is still flat." |
-| 4 | Predict | Early-warning panel with factors | "Early warning with exact reasons, a median of 10 hours earlier than NEWS2 alone on held-out test patients." |
+| 4 | Predict | Early-warning panel with factors | "Early warning with exact reasons, about 4 hours earlier than a NEWS2 ≥ 3 trigger on held-out test patients, with fewer false alarms." |
 | 5 | Respond | Hindi/Hinglish note understood | "Her daughter-in-law writes in Hinglish; HomeWard understands it, including 'nahi'." |
 | 6 | Alert | NEWS2 crosses the urgent threshold; risk becomes HIGH with a reason | "Now it's High risk, confirmed on two readings." |
 | 7 | Respond | Escalation ladder and countdown | "Caregiver first, care desk in parallel for critical, then family and ambulance on a timer." |

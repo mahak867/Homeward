@@ -16,7 +16,9 @@ LEXICON = {
     "breathless": ("Breathlessness", 1.0, False, [
         "breathless", "short of breath", "shortness of breath", "difficulty breathing", "hard to breathe",
         "can't breathe", "cannot breathe", "breathing fast", "wheez", "saans phool", "saans ki taklif",
-        "saans lene mein", "saans", "dum ghut", "सांस", "साँस",
+        "saans lene mein", "saans", "dum ghut", "saans nahi aa rahi", "saans nahi aa raha", "saans nahi aa rhi",
+        "saans nahi le pa", "saans nahi li ja", "saans lene mein dikkat", "unable to breathe", "not able to breathe",
+        "can't catch", "cannot catch", "moochu vida mudiyala", "moochu vida mudiyalai", "साँस नहीं आ", "सांस नहीं आ", "सांस", "साँस",
         "moochu thinaral", "moochu vida kashtam", "moochu", "swasam", "மூச்சு திணறல்", "மூச்சு"]),
     "confusion": ("New confusion / drowsiness", 1.5, False, [
         "confused", "confusion", "not making sense", "disoriented", "drowsy", "hard to wake", "very sleepy",
@@ -58,6 +60,19 @@ LEXICON = {
 
 NEG_BEFORE = {"no", "not", "denies", "without", "never", "na", "nahin", "nahi", "nahī", "नहीं", "न"}
 NEG_AFTER = {"nahi", "nahin", "नहीं", "illai", "illa", "illama", "இல்லை"}
+# Latin-script terms match whole words only ("fall" must not fire on "oxygen falling");
+# these stems are allowed to take a suffix (wheez-ing, vomit-ed, vizhundhu-taar ...).
+STEMS = {"wheez", "vomit", "shiver", "kaanp", "vizhundhu", "vizhunthu", "bhool", "chakkar", "sujan", "mayang", "drows"}
+
+
+def _find(low: str, term: str) -> int:
+    if not term.isascii():
+        return low.find(term)
+    right = "" if term in STEMS else r"(?![a-z])"
+    m = re.search(r"(?<![a-z])" + re.escape(term) + right, low)
+    return m.start() if m else -1
+
+
 _clause = re.compile(r"[,.;!?।\n]| but | lekin | par | aanaa | aana | ஆனா ")
 
 _tok = re.compile(r"[\wऀ-ॿ஀-௿']+", re.UNICODE)  # + Devanagari & Tamil combining marks
@@ -94,7 +109,7 @@ def analyse(text: str) -> dict:
     found, negated = {}, {}
     for cat, (label, w, red, terms) in LEXICON.items():
         for term in sorted(terms, key=len, reverse=True):
-            idx = low.find(term)
+            idx = _find(low, term)
             if idx < 0:
                 continue
             pre = _clause.split(low[max(0, idx - 30):idx])[-1]

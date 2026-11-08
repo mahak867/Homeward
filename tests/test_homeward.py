@@ -435,3 +435,19 @@ def test_unknown_usernames_are_not_tracked(world):
     for i in range(50):
         client.post("/api/login", json={"user": f"ghost{i}", "pin": "0000"})
     assert not any(k.startswith("ghost") for k in auth.fails)
+
+
+
+def test_acknowledged_alert_reopens_when_it_gets_worse(world):
+    clock, chaos, eng, client, hubs = world
+    client.post("/api/patients/P-102/notes", json={"text": "seene mein dard"})          # HIGH (chest pain)
+    a = next(a for a in eng.alerts(0) if a["patient_id"] == "P-102" and a["kind"] == "NOTE")
+    client.post(f"/api/alerts/{a['id']}/ack", json={})
+    assert client.get("/api/devices/P-102/command", headers=KEY("P-102")).json()["alarm"] == "off"
+    client.post("/api/patients/P-102/notes", json={"text": "he fainted, not responding"})  # now CRITICAL
+    b = next(x for x in eng.alerts(0) if x["id"] == a["id"])
+    assert b["severity"] == "CRITICAL" and b["status"] == "OPEN" and b["level"] == 1
+    assert b["escalates_in_s"] is not None                                              # ladder restarted
+    assert client.get("/api/devices/P-102/command", headers=KEY("P-102")).json()["alarm"] == "fast"
+    audit = [r[0] for r in eng.db.execute("SELECT what FROM audit WHERE alert_id=?", (a["id"],)).fetchall()]
+    assert any("RE-OPENED" in w for w in audit)

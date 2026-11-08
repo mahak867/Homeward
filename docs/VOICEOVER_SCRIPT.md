@@ -16,7 +16,7 @@ ffmpeg -i docs/demo/HomeWard-demo-video.mp4 -i voice.mp3 -c:v copy -c:a aac -sho
 | **0:21** | Dashboard, pipeline strip highlighted | "Three homes, one live pipeline: sensors, edge hubs, platform, AI, alerts and response. Time is fast-forwarded." |
 | **0:28** | Rajesh's vitals tiles | "Rajesh has COPD and a prescribed oxygen target of 88 to 92. We use NEWS2 Scale 2, the hospital standard, plus his own baseline, so there are no false alarms." |
 | **0:37** | Kamla's charts; the purple risk line climbs | "Kamla came home after pneumonia. A slow infection starts. Watch the purple AI risk rise while the orange NEWS2 score is still flat." |
-| **0:59** | Early-warning panel | "Early warning, with exact reasons: breathing, pulse and temperature drifting from her normal. On held-out test patients, that's about ten hours earlier than NEWS2 alone." |
+| **0:59** | Early-warning panel | "Early warning, with exact reasons: breathing, pulse and temperature drifting from her normal. On our test patients, that's about four hours earlier than the standard score's first trigger." |
 | **1:08** | Phone app (Hindi), note typed | "Her daughter-in-law Sunita writes in Hinglish on her phone. HomeWard understands it, even 'nahi'. Her account sees only her own mother-in-law: privacy by design." |
 | **1:17** | Alerts panel, risk becomes HIGH | "Now it's High risk, confirmed on two readings so one glitch can't cause panic." |
 | **1:32** | Escalation ladder and countdown | "If nobody responds, the alert climbs: caregiver, family, care desk, ambulance." |

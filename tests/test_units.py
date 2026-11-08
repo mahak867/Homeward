@@ -100,6 +100,22 @@ def test_notes_multilingual(text, found, neg, lang):
     assert lang in a["languages"]
 
 
+@pytest.mark.parametrize("text,found", [
+    ("saans nahi aa rahi", {"breathless"}),                  # "can't breathe" - must NOT be read as negated
+    ("Maa ki saans nahi aa rahi hai", {"breathless"}),
+    ("सांस नहीं आ रही", {"breathless"}),
+    ("unable to breathe", {"breathless"}),
+    ("moochu vida mudiyala", {"breathless"}),
+    ("oxygen is falling", set()),                            # "falling" is not a fall
+    ("his SpO2 keeps falling slowly", set()),
+    ("Papa fell in the bathroom", {"fall"}),
+    ("wheezing at night", {"breathless"}),                   # stems still match with suffixes
+    ("vomited twice", {"intake"}),
+])
+def test_notes_judge_reported_phrases(text, found):
+    assert {s["category"] for s in notes.analyse(text)["signals"] if s["weight"] > 0} == found
+
+
 @pytest.mark.parametrize("text,flag", [("chest pain since morning", "Chest pain"), ("she fainted", "Unresponsive / fainted"),
                                        ("mayakkam aagi vizhundhaar", "Fall"), ("बेहोश हो गए", "Unresponsive / fainted")])
 def test_notes_red_flags(text, flag):

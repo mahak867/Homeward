@@ -388,11 +388,17 @@ class Engine:
         now = time.time()
         if cur:
             if SEV_RANK[sev] > SEV_RANK[cur["severity"]]:
+                # Worse than what the responder acknowledged -> it needs a fresh human response:
+                # re-open, restart the escalation ladder from level 1, and the bedside buzzer sounds again.
+                reopened = cur["status"] == "ACKNOWLEDGED"
+                level = 1 if reopened else cur["level"]
                 self.db.execute("UPDATE alerts SET severity=?, title=?, detail=?, improving=0, clear_since=NULL,"
-                                " next_escalation_real=? WHERE id=?",
-                                (sev, title, json.dumps(detail), now + ESCALATE_AFTER_S[sev] if cur["status"] == "OPEN" else None, cur["id"]))
-                self._audit(pid, f"Alert #{cur['id']} upgraded {cur['severity']} -> {sev}: {title}", alert_id=cur["id"])
-                self._notify(cur["id"], pid, max(1, cur["level"]), sev, title, upgrade=True)
+                                " status='OPEN', level=?, next_escalation_real=? WHERE id=?",
+                                (sev, title, json.dumps(detail), level, now + ESCALATE_AFTER_S[sev], cur["id"]))
+                self._audit(pid, f"Alert #{cur['id']} upgraded {cur['severity']} -> {sev}: {title}"
+                            + (f" - RE-OPENED (was acknowledged by {cur['acked_by']}), escalation restarted" if reopened else ""),
+                            alert_id=cur["id"])
+                self._notify(cur["id"], pid, max(1, level), sev, title, upgrade=True)
                 if sev == "CRITICAL":
                     self._notify(cur["id"], pid, 3, sev, title, parallel=True)
             else:  # same or lower severity: refresh the explanation (and the % in the title) silently
